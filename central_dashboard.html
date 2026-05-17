@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RK Group Central Audit Dashboard</title>
+  <style>
+    :root {
+      --rail-blue:#123c69; --signal-red:#d8343a; --green:#14804a; --amber:#b76e00;
+      --ink:#17202a; --muted:#667085; --line:#d9dee7; --paper:#fff; --bg:#f4f7fb;
+      --shadow:0 14px 40px rgba(18,60,105,.14);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+    header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+    .bar,main,footer{max-width:1240px;margin:0 auto;padding:14px}
+    .bar{display:flex;align-items:center;gap:12px}
+    .logo{width:48px;height:48px;border-radius:8px;background:linear-gradient(135deg,var(--rail-blue),var(--signal-red));color:#fff;display:grid;place-items:center;font-weight:900}
+    h1,h2,h3{margin:0;letter-spacing:0} h1{font-size:18px} h2{font-size:19px}
+    .small{font-size:12px;color:var(--muted)}
+    .hero{position:relative;overflow:hidden;background:linear-gradient(100deg,#123c69,#245b84 60%,#d8343a);color:#fff;border-bottom:5px solid #30363a}
+    .hero-inner{max-width:1240px;margin:0 auto;padding:22px 14px 50px;position:relative;z-index:1}
+    .hero:after{content:"";position:absolute;left:0;right:0;bottom:0;height:38px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.9) 0 26px,transparent 26px 50px);opacity:.24;animation:track 2.6s linear infinite}
+    @keyframes track{to{transform:translateX(-50px)}}
+    main{padding-bottom:80px}
+    .grid{display:grid;gap:14px}.two{grid-template-columns:2fr 1fr}.three{grid-template-columns:repeat(3,1fr)}.four{grid-template-columns:repeat(4,1fr)}
+    .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;box-shadow:var(--shadow)}
+    label{display:block;margin:8px 0 5px;font-size:12px;font-weight:800;color:var(--muted)}
+    input,select,button{width:100%;border:1px solid #cfd6e2;border-radius:8px;padding:10px;font:inherit}
+    button{border:0;background:var(--rail-blue);color:#fff;font-weight:800;cursor:pointer}.secondary{background:#425466}.danger{background:var(--signal-red)}.good{background:var(--green)}.ghost{background:#fff;color:var(--rail-blue);border:1px solid var(--line)}
+    .hidden{display:none!important}.kpi b{display:block;font-size:28px}.kpi{border-top:5px solid var(--rail-blue)}
+    table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#eef5fb;color:var(--rail-blue)}
+    .table-scroll{overflow:auto;border:1px solid var(--line);border-radius:8px;max-height:440px}
+    canvas{width:100%;height:260px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.tabs button{width:auto;border-radius:999px;padding:9px 12px}.tabs button.active{background:var(--signal-red)}
+    .status-pass{color:var(--green);font-weight:800}.status-fail{color:var(--signal-red);font-weight:800}
+    footer{position:fixed;left:0;right:0;bottom:0;max-width:none;background:#111827;color:#fff;text-align:center;font-size:12px;border-top:3px solid var(--signal-red)}
+    @media(max-width:860px){.two,.three,.four{grid-template-columns:1fr}.bar{align-items:flex-start}}
+  </style>
+</head>
+<body>
+  <header><div class="bar"><div class="logo">RK</div><div style="flex:1"><h1>Central Command Audit Dashboard</h1><div class="small">Live visibility for Train, Base Kitchen and Store audits</div></div><button id="logoutBtn" class="ghost hidden" style="width:auto">Logout</button></div></header>
+  <section class="hero"><div class="hero-inner"><h2>Rail Catering Audit Command Centre</h2><p>Track audit completion, score trends, weak categories, auditor productivity and failed locations.</p></div></section>
+  <main>
+    <section id="loginScreen" class="card" style="max-width:440px;margin:auto">
+      <h2>Dashboard Login</h2>
+      <p class="small">Use demo/demo for testing. Super admin: sandipnandi2000@gmail.com.</p>
+      <label>User ID or Email</label><input id="loginId" value="demo">
+      <label>Password</label><input id="loginPassword" type="password" value="demo">
+      <button id="loginBtn" style="margin-top:12px">Login</button>
+      <p id="loginMsg" class="small"></p>
+    </section>
+
+    <section id="dashScreen" class="hidden">
+      <div class="tabs">
+        <button data-tab="overview" class="active">Overview</button>
+        <button data-tab="reports">Reports</button>
+        <button data-tab="analytics">Analytics</button>
+        <button data-tab="data">Data</button>
+      </div>
+      <section id="tab-overview">
+        <div class="grid four">
+          <div class="card kpi"><span class="small">Total Audits</span><b id="kTotal">0</b></div>
+          <div class="card kpi"><span class="small">Average Score</span><b id="kAvg">0%</b></div>
+          <div class="card kpi"><span class="small">Passed</span><b id="kPass">0</b></div>
+          <div class="card kpi"><span class="small">Failed</span><b id="kFail">0</b></div>
+        </div>
+        <div class="grid two" style="margin-top:14px">
+          <div class="card"><h2>Audit Type Mix</h2><canvas id="typeChart"></canvas></div>
+          <div class="card"><h2>Score Band</h2><canvas id="scoreChart"></canvas></div>
+        </div>
+        <div class="grid two" style="margin-top:14px">
+          <div class="card"><h2>Auditor Productivity</h2><canvas id="auditorChart"></canvas></div>
+          <div class="card"><h2>Recent Failed / Risk Audits</h2><div class="table-scroll"><table id="riskTable"></table></div></div>
+        </div>
+      </section>
+
+      <section id="tab-reports" class="hidden card">
+        <h2>Completed Audit Reports</h2>
+        <div class="grid four">
+          <div><label>Audit Type</label><select id="filterType"><option value="">All</option><option value="train">Train</option><option value="base">Base Kitchen</option><option value="store">Store</option></select></div>
+          <div><label>Auditor</label><input id="filterAuditor" placeholder="Name or ID"></div>
+          <div><label>From Date</label><input id="filterFrom" type="date"></div>
+          <div><label>To Date</label><input id="filterTo" type="date"></div>
+        </div>
+        <button onclick="renderAll()" style="margin:12px 0;width:auto">Apply Filter</button>
+        <button class="secondary" onclick="exportCsv()" style="margin:12px 0;width:auto">Download CSV</button>
+        <div class="table-scroll"><table id="reportTable"></table></div>
+      </section>
+
+      <section id="tab-analytics" class="hidden">
+        <div class="grid two">
+          <div class="card"><h2>Category Weakness Analysis</h2><canvas id="categoryChart"></canvas></div>
+          <div class="card"><h2>Audit Trend</h2><canvas id="trendChart"></canvas></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h2>Deep Finding Table</h2>
+          <div class="table-scroll"><table id="findingTable"></table></div>
+        </div>
+      </section>
+
+      <section id="tab-data" class="hidden card">
+        <h2>Data and Firebase</h2>
+        <p class="small">This dashboard reads Firestore collection auditReports after Firebase is configured. Before that, it reads local data saved by audit_app.html in the same browser.</p>
+        <div class="grid three">
+          <button onclick="loadReports()">Refresh Data</button>
+          <button class="secondary" onclick="downloadJson()">Download JSON</button>
+          <button class="danger" onclick="clearLocalData()">Clear Local Demo Data</button>
+        </div>
+        <label>Firebase Config Area</label>
+        <textarea id="firebaseConfigText" style="width:100%;min-height:150px;border:1px solid #cfd6e2;border-radius:8px;padding:10px"></textarea>
+        <button onclick="saveFirebaseConfig()" style="margin-top:10px">Save Config Locally</button>
+        <p id="dataMsg" class="small"></p>
+      </section>
+    </section>
+  </main>
+  <footer>System devolopd by Sandip Nandi . Support Number - +91 8584833366 , Mail ID - sandipnandi2000@gmail.com</footer>
+
+  <script type="module">
+    const firebaseConfig = {
+      apiKey: "AIzaSyCerJ38-29BXyMtts7tBaBD-38ZfD7rjzE",
+      authDomain: "rk-rail-audit-system.firebaseapp.com",
+      projectId: "rk-rail-audit-system",
+      storageBucket: "rk-rail-audit-system.firebasestorage.app",
+      messagingSenderId: "104291279961",
+      appId: "1:104291279961:web:0295fe8bfcd1640570bd48"
+    };
+    const storedConfig = localStorage.getItem("rkFirebaseConfig");
+    const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
+    const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
+    let db = null, collection = null, getDocs = null;
+    if (firebaseReady) {
+      try {
+        const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
+        const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js");
+        collection = fsMod.collection;
+        getDocs = fsMod.getDocs;
+        db = fsMod.getFirestore(appMod.initializeApp(activeConfig));
+      } catch (err) { console.warn(err); }
+    }
+    const $ = id => document.getElementById(id);
+    const getLocal = (key, fallback=[]) => JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    const setLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+    let reports = [];
+    window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig;
+    $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
+    $("loginBtn").onclick = login;
+    $("logoutBtn").onclick = () => location.reload();
+    document.querySelectorAll("[data-tab]").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
+    ["filterType","filterAuditor","filterFrom","filterTo"].forEach(id => $(id).oninput = renderAll);
+
+    function login() {
+      const id = $("loginId").value.trim(), pass = $("loginPassword").value;
+      if ((id === "demo" && pass === "demo") || (id === "sandipnandi2000@gmail.com" && pass === "Sanju@1234")) {
+        $("loginScreen").classList.add("hidden"); $("dashScreen").classList.remove("hidden"); $("logoutBtn").classList.remove("hidden"); loadReports(); return;
+      }
+      $("loginMsg").textContent = "Invalid login. Use demo/demo for testing.";
+    }
+    function showTab(tab) {
+      ["overview","reports","analytics","data"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== tab));
+      document.querySelectorAll("[data-tab]").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
+      renderAll();
+    }
+    async function loadReports() {
+      reports = getLocal("rkAuditReports", []);
+      if (db) {
+        try { const snap = await getDocs(collection(db, "auditReports")); reports = snap.docs.map(d => d.data()); setLocal("rkAuditReports", reports); $("dataMsg").textContent = "Loaded from Firebase."; }
+        catch (err) { $("dataMsg").textContent = "Firebase load failed, showing local data: " + err.message; }
+      }
+      if (!reports.length) {
+        reports = sampleReports();
+        setLocal("rkAuditReports", reports);
+      }
+      renderAll();
+    }
+    function filtered() {
+      return reports.filter(r => {
+        const typeOk = !$("filterType").value || r.type === $("filterType").value;
+        const aud = $("filterAuditor").value.toLowerCase();
+        const audOk = !aud || String(r.auditor || "").toLowerCase().includes(aud) || String(r.auditorId || "").toLowerCase().includes(aud);
+        const fromOk = !$("filterFrom").value || String(r.date || "") >= $("filterFrom").value;
+        const toOk = !$("filterTo").value || String(r.date || "") <= $("filterTo").value;
+        return typeOk && audOk && fromOk && toOk;
+      });
+    }
+    function renderAll() {
+      const data = filtered();
+      const pass = data.filter(r => (r.totals?.pct || 0) >= 60).length;
+      const fail = data.length - pass;
+      const avg = data.length ? Math.round(data.reduce((s,r)=>s+(r.totals?.pct||0),0)/data.length) : 0;
+      $("kTotal").textContent = data.length; $("kAvg").textContent = avg + "%"; $("kPass").textContent = pass; $("kFail").textContent = fail;
+      renderTable(data); renderRisk(data); renderFindings(data);
+      barChart("typeChart", countBy(data, r => r.typeLabel || r.type), ["#123c69","#d8343a","#14804a"]);
+      barChart("scoreChart", scoreBands(data), ["#d8343a","#b76e00","#14804a","#123c69"]);
+      barChart("auditorChart", countBy(data, r => r.auditor || "Unknown"), ["#123c69"]);
+      barChart("categoryChart", weakCategories(data), ["#d8343a"]);
+      lineChart("trendChart", trend(data));
+    }
+    function renderTable(data) {
+      $("reportTable").innerHTML = `<tr><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Auditor</th><th>Score</th><th>Status</th><th>Observation</th></tr>` +
+        data.map(r => `<tr><td>${r.id||""}</td><td>${r.date||""}</td><td>${r.typeLabel||r.type||""}</td><td>${r.location||""}</td><td>${r.auditor||""}</td><td>${r.totals?.score||0}/${r.totals?.max||0} (${r.totals?.pct||0}%)</td><td class="${(r.totals?.pct||0)>=60?"status-pass":"status-fail"}">${(r.totals?.pct||0)>=60?"Pass":"Fail"}</td><td>${r.observations?.major||""}</td></tr>`).join("");
+    }
+    function renderRisk(data) {
+      const risk = [...data].filter(r => (r.totals?.pct || 0) < 75).sort((a,b)=>(a.totals?.pct||0)-(b.totals?.pct||0)).slice(0,10);
+      $("riskTable").innerHTML = `<tr><th>Date</th><th>Type</th><th>Location</th><th>Score</th></tr>` + risk.map(r => `<tr><td>${r.date||""}</td><td>${r.typeLabel||r.type||""}</td><td>${r.location||""}</td><td>${r.totals?.pct||0}%</td></tr>`).join("");
+    }
+    function renderFindings(data) {
+      const rows = [];
+      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => { if (val === "no") rows.push([r.date, r.typeLabel || r.type, r.location, r.auditor, "Failed point #" + (Number(idx)+1), r.itemRemarks?.[idx] || ""]); }));
+      $("findingTable").innerHTML = `<tr><th>Date</th><th>Audit</th><th>Location</th><th>Auditor</th><th>Finding</th><th>Remarks</th></tr>` + rows.map(x => `<tr>${x.map(v=>`<td>${v||""}</td>`).join("")}</tr>`).join("");
+    }
+    function countBy(data, fn) { const o={}; data.forEach(r => { const k=fn(r)||"Unknown"; o[k]=(o[k]||0)+1; }); return o; }
+    function scoreBands(data) {
+      const o={"0-49":0,"50-59":0,"60-79":0,"80-100":0};
+      data.forEach(r => { const p=r.totals?.pct||0; if(p<50)o["0-49"]++; else if(p<60)o["50-59"]++; else if(p<80)o["60-79"]++; else o["80-100"]++; });
+      return o;
+    }
+    function weakCategories(data) {
+      const o={};
+      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => { if (val === "no") { const k=(r.typeLabel || r.type) + " point " + (Number(idx)+1); o[k]=(o[k]||0)+1; }}));
+      return Object.fromEntries(Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,12));
+    }
+    function trend(data) {
+      const o={}; data.forEach(r => { const d=r.date || String(r.createdAt || "").slice(0,10) || "No date"; if(!o[d])o[d]=[]; o[d].push(r.totals?.pct||0); });
+      return Object.fromEntries(Object.entries(o).sort().map(([k,v])=>[k, Math.round(v.reduce((a,b)=>a+b,0)/v.length)]));
+    }
+    function barChart(id, obj, colors) {
+      const c=$(id), ctx=c.getContext("2d"), W=c.width=c.clientWidth*2, H=c.height=260*2; ctx.clearRect(0,0,W,H);
+      const entries=Object.entries(obj); const max=Math.max(1,...entries.map(e=>e[1])); const pad=70, gap=14, bw=Math.max(24,(W-pad*2)/Math.max(1,entries.length)-gap);
+      ctx.font="24px Arial"; ctx.fillStyle="#17202a";
+      entries.forEach(([label,val],i)=>{ const x=pad+i*(bw+gap), h=(H-120)*(val/max), y=H-60-h; ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(x,y,bw,h); ctx.fillStyle="#17202a"; ctx.fillText(String(val),x,y-8); ctx.save(); ctx.translate(x,H-35); ctx.rotate(-0.45); ctx.fillText(label.slice(0,22),0,0); ctx.restore(); });
+    }
+    function lineChart(id, obj) {
+      const c=$(id), ctx=c.getContext("2d"), W=c.width=c.clientWidth*2, H=c.height=260*2; ctx.clearRect(0,0,W,H);
+      const entries=Object.entries(obj); if(!entries.length)return; const pad=60; ctx.strokeStyle="#123c69"; ctx.lineWidth=5; ctx.beginPath();
+      entries.forEach(([label,val],i)=>{ const x=pad+i*((W-pad*2)/Math.max(1,entries.length-1)); const y=H-pad-(val/100)*(H-pad*2); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); ctx.fillStyle="#d8343a"; ctx.fillRect(x-5,y-5,10,10); ctx.fillStyle="#17202a"; ctx.font="22px Arial"; ctx.fillText(val+"%",x-18,y-14); });
+      ctx.stroke();
+    }
+    function exportCsv() {
+      const data = filtered();
+      const rows = [["ID","Date","Type","Location","Auditor","Score","Max","Compliance","Status"]];
+      data.forEach(r => rows.push([r.id,r.date,r.typeLabel||r.type,r.location,r.auditor,r.totals?.score,r.totals?.max,r.totals?.pct,(r.totals?.pct||0)>=60?"Pass":"Fail"]));
+      download("rk-audit-dashboard.csv", rows.map(r => r.map(v => `"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n"), "text/csv");
+    }
+    function downloadJson(){ download("rk-audit-data.json", JSON.stringify(reports,null,2), "application/json"); }
+    function download(name, content, type){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+    function clearLocalData(){ localStorage.removeItem("rkAuditReports"); reports=[]; renderAll(); $("dataMsg").textContent="Local demo data cleared."; }
+    function saveFirebaseConfig(){ try{ JSON.parse($("firebaseConfigText").value); localStorage.setItem("rkFirebaseConfig",$("firebaseConfigText").value); $("dataMsg").textContent="Config saved locally. Refresh page to activate it."; } catch { $("dataMsg").textContent="Config is not valid JSON."; } }
+    function sampleReports(){
+      return [
+        {id:"DEMO-TRAIN-1",type:"train",typeLabel:"Train Audit",date:"2026-05-15",location:"12301 Rajdhani",auditor:"Demo Auditor",totals:{score:42,max:55,pct:76},responses:{1:"no",4:"yes"},itemRemarks:{1:"Temperature log not complete"},observations:{major:"Temperature register needs daily control."}},
+        {id:"DEMO-BASE-1",type:"base",typeLabel:"Base Kitchen Audit",date:"2026-05-16",location:"Howrah Base Kitchen",auditor:"Demo Auditor",totals:{score:95,max:140,pct:68},responses:{10:"no",21:"no"},itemRemarks:{10:"One certificate near expiry",21:"Pending outward stock found"},observations:{major:"Inventory follow-up required."}},
+        {id:"DEMO-STORE-1",type:"store",typeLabel:"Store Audit",date:"2026-05-17",location:"Kolkata Store",auditor:"Central Team",totals:{score:240,max:350,pct:69},responses:{4:"no",15:"no",33:"no"},itemRemarks:{15:"Extinguisher refill due"},observations:{major:"Fire and inbound documentation need attention."}}
+      ];
+    }
+  </script>
+</body>
+</html>
