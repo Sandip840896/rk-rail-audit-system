@@ -128,14 +128,19 @@
     const storedConfig = localStorage.getItem("rkFirebaseConfig");
     const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
     const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
-    let db = null, collection = null, getDocs = null;
+    let db = null, auth = null, collection = null, getDocs = null, signInWithEmailAndPassword = null, signOut = null;
     if (firebaseReady) {
       try {
         const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
         const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js");
+        const authMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js");
+        const app = appMod.initializeApp(activeConfig);
         collection = fsMod.collection;
         getDocs = fsMod.getDocs;
-        db = fsMod.getFirestore(appMod.initializeApp(activeConfig));
+        signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
+        signOut = authMod.signOut;
+        db = fsMod.getFirestore(app);
+        auth = authMod.getAuth(app);
       } catch (err) { console.warn(err); }
     }
     const $ = id => document.getElementById(id);
@@ -145,16 +150,26 @@
     window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig;
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
     $("loginBtn").onclick = login;
-    $("logoutBtn").onclick = () => location.reload();
+    $("logoutBtn").onclick = async () => { if (auth && signOut) await signOut(auth).catch(console.warn); location.reload(); };
     document.querySelectorAll("[data-tab]").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
     ["filterType","filterAuditor","filterFrom","filterTo"].forEach(id => $(id).oninput = renderAll);
 
-    function login() {
+    async function login() {
       const id = $("loginId").value.trim(), pass = $("loginPassword").value;
-      if ((id === "demo" && pass === "demo") || (id === "sandipnandi2000@gmail.com" && pass === "Sanju@1234")) {
+      $("loginMsg").textContent = "";
+      if (id === "demo" && pass === "demo") {
         $("loginScreen").classList.add("hidden"); $("dashScreen").classList.remove("hidden"); $("logoutBtn").classList.remove("hidden"); loadReports(); return;
       }
-      $("loginMsg").textContent = "Invalid login. Use demo/demo for testing.";
+      if (auth && signInWithEmailAndPassword && id.includes("@")) {
+        try {
+          await signInWithEmailAndPassword(auth, id, pass);
+          $("loginScreen").classList.add("hidden"); $("dashScreen").classList.remove("hidden"); $("logoutBtn").classList.remove("hidden"); loadReports(); return;
+        } catch (err) {
+          $("loginMsg").textContent = "Firebase login failed: " + err.message;
+          return;
+        }
+      }
+      $("loginMsg").textContent = "Invalid login. Use demo/demo or a Firebase email/password user.";
     }
     function showTab(tab) {
       ["overview","reports","analytics","data"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== tab));

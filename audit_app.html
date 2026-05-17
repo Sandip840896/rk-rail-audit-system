@@ -317,16 +317,21 @@
     const storedConfig = localStorage.getItem("rkFirebaseConfig");
     const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
     const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
-    let db = null, collection = null, addDoc = null, getDocs = null, serverTimestamp = null;
+    let db = null, auth = null, collection = null, addDoc = null, getDocs = null, serverTimestamp = null, signInWithEmailAndPassword = null, signOut = null;
     if (firebaseReady) {
       try {
         const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
         const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js");
+        const authMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js");
+        const app = appMod.initializeApp(activeConfig);
         collection = fsMod.collection;
         addDoc = fsMod.addDoc;
         getDocs = fsMod.getDocs;
         serverTimestamp = fsMod.serverTimestamp;
-        db = fsMod.getFirestore(appMod.initializeApp(activeConfig));
+        signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
+        signOut = authMod.signOut;
+        db = fsMod.getFirestore(app);
+        auth = authMod.getAuth(app);
       } catch (err) { console.warn(err); }
     }
 
@@ -468,18 +473,35 @@
     window.testFirebase = testFirebase;
 
     $("loginBtn").onclick = login;
-    $("logoutBtn").onclick = () => location.reload();
+    $("logoutBtn").onclick = async () => { if (auth && signOut) await signOut(auth).catch(console.warn); location.reload(); };
     document.querySelectorAll("[data-tab]").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
     $("auditDate").valueAsDate = new Date();
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
 
-    function login() {
+    async function login() {
       const id = $("loginId").value.trim();
       const pass = $("loginPassword").value;
-      if ((id === "demo" && pass === "demo") || (id === "sandipnandi2000@gmail.com" && pass === "Sanju@1234")) {
-        current.user = { id, email: id, name: id === "demo" ? "Demo Auditor" : "Sandip Nandi", role: id === "demo" ? "auditor" : "super-admin" };
+      $("loginMsg").textContent = "";
+      if (id === "demo" && pass === "demo") {
+        current.user = { id, email: id, name: "Demo Auditor", role: "auditor" };
         enterApp();
         return;
+      }
+      if (auth && signInWithEmailAndPassword && id.includes("@")) {
+        try {
+          const result = await signInWithEmailAndPassword(auth, id, pass);
+          current.user = {
+            id: result.user.uid,
+            email: result.user.email,
+            name: result.user.email === "sandipnandi2000@gmail.com" ? "Sandip Nandi" : result.user.email,
+            role: result.user.email === "sandipnandi2000@gmail.com" ? "super-admin" : "auditor"
+          };
+          enterApp();
+          return;
+        } catch (err) {
+          $("loginMsg").textContent = "Firebase login failed: " + err.message;
+          return;
+        }
       }
       const users = getLocal("rkUsers", []);
       const found = users.find(u => u.email === id || u.name === id);
@@ -488,7 +510,7 @@
         enterApp();
         return;
       }
-      $("loginMsg").textContent = "Invalid login. Use demo/demo or create a local user from Admin after logging in.";
+      $("loginMsg").textContent = "Invalid login. Use demo/demo or a Firebase email/password user.";
     }
 
     function enterApp() {
