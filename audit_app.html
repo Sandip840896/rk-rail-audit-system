@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RK Group Rail Audit App</title>
+  <style>
+    :root {
+      --rail-blue: #123c69;
+      --signal-red: #d8343a;
+      --track: #2f3437;
+      --cream: #f6f2e8;
+      --paper: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --green: #14804a;
+      --amber: #b76e00;
+      --line: #d9dee7;
+      --shadow: 0 14px 40px rgba(18, 60, 105, .16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg, #eef5fb 0, #fff 42%, #f6f2e8 100%);
+      color: var(--ink);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 8;
+      background: rgba(255,255,255,.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    .bar, main, footer { max-width: 1180px; margin: 0 auto; padding: 14px; }
+    .bar { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 48px; height: 48px; border-radius: 8px; color: white; font-weight: 800;
+      display: grid; place-items: center; background: linear-gradient(135deg, var(--rail-blue), var(--signal-red));
+      box-shadow: var(--shadow);
+    }
+    .title { flex: 1; min-width: 0; }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 18px; }
+    .small { color: var(--muted); font-size: 12px; }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border-bottom: 4px solid var(--track);
+      background: linear-gradient(100deg, #123c69, #245b84 58%, #d8343a);
+      color: white;
+    }
+    .hero:after {
+      content: "";
+      position: absolute; left: 0; right: 0; bottom: 0; height: 42px;
+      background: repeating-linear-gradient(90deg, rgba(255,255,255,.92) 0 28px, transparent 28px 52px);
+      opacity: .25; animation: track 2.8s linear infinite;
+    }
+    @keyframes track { from { transform: translateX(0); } to { transform: translateX(-52px); } }
+    .hero-inner { max-width: 1180px; margin: 0 auto; padding: 22px 14px 58px; position: relative; z-index: 1; }
+    .train-line { height: 7px; border-radius: 999px; background: white; max-width: 320px; margin-top: 16px; position: relative; }
+    .train-line:before, .train-line:after { content: ""; width: 15px; height: 15px; border-radius: 50%; background: #ffc845; position: absolute; top: -4px; }
+    .train-line:before { left: 34px; } .train-line:after { right: 34px; }
+    main { padding-top: 18px; padding-bottom: 80px; }
+    .grid { display: grid; gap: 14px; }
+    .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+    label { font-size: 12px; color: var(--muted); font-weight: 700; display: block; margin: 8px 0 5px; }
+    input, select, textarea, button {
+      width: 100%;
+      border: 1px solid #cfd6e2;
+      border-radius: 8px;
+      padding: 11px;
+      font: inherit;
+      background: white;
+      color: var(--ink);
+    }
+    textarea { min-height: 92px; resize: vertical; }
+    button {
+      cursor: pointer;
+      border: 0;
+      color: white;
+      background: var(--rail-blue);
+      font-weight: 800;
+    }
+    button.secondary { background: #425466; }
+    button.good { background: var(--green); }
+    button.warn { background: var(--amber); }
+    button.danger { background: var(--signal-red); }
+    button.ghost { background: white; color: var(--rail-blue); border: 1px solid var(--line); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .tabs button { width: auto; padding: 9px 12px; border-radius: 999px; }
+    .tabs button.active { background: var(--signal-red); }
+    .hidden { display: none !important; }
+    .audit-option {
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-top: 5px solid var(--rail-blue);
+    }
+    .audit-option strong { font-size: 18px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .pill { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 999px; background: #eef5fb; color: var(--rail-blue); font-size: 12px; font-weight: 800; }
+    .scorebox { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 10px 0; }
+    .scorebox div { background: #f4f7fb; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .scorebox b { font-size: 20px; display: block; }
+    .point {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      margin: 10px 0;
+      background: #fff;
+    }
+    .point-head { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+    .point h3 { font-size: 15px; }
+    .radio-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 9px 0; }
+    .radio-row label { color: var(--ink); margin: 0; }
+    .radio-row input { width: auto; margin-right: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
+    th { background: #eef5fb; color: var(--rail-blue); }
+    .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+    footer {
+      position: fixed;
+      left: 0; right: 0; bottom: 0; max-width: none;
+      background: #111827; color: white; text-align: center; font-size: 12px;
+      border-top: 3px solid var(--signal-red);
+    }
+    @media (max-width: 760px) {
+      .two, .three { grid-template-columns: 1fr; }
+      .scorebox { grid-template-columns: 1fr; }
+      .bar { align-items: flex-start; }
+      .hide-mobile { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <div class="logo">RK</div>
+      <div class="title">
+        <h1>KR/RK Group Indian Rail Catering Audit</h1>
+        <div class="small">Train, Base Kitchen and Store audit app</div>
+      </div>
+      <button id="logoutBtn" class="ghost hidden" style="width:auto">Logout</button>
+    </div>
+  </header>
+  <section class="hero">
+    <div class="hero-inner">
+      <h2>Mobile Audit Control</h2>
+      <p>Capture audit marks, compliance, assets, attendance and observations from the field.</p>
+      <div class="train-line"></div>
+    </div>
+  </section>
+  <main>
+    <section id="loginScreen" class="card" style="max-width:440px;margin:auto">
+      <h2>Login</h2>
+      <p class="small">Use demo/demo for testing. Firebase login will work after configuration.</p>
+      <label>User ID or Email</label>
+      <input id="loginId" autocomplete="username" value="demo">
+      <label>Password</label>
+      <input id="loginPassword" type="password" autocomplete="current-password" value="demo">
+      <button id="loginBtn" style="margin-top:12px">Login</button>
+      <p id="loginMsg" class="small"></p>
+    </section>
+
+    <section id="appScreen" class="hidden">
+      <div class="tabs">
+        <button data-tab="home" class="active">Audit</button>
+        <button data-tab="reports">My Reports</button>
+        <button data-tab="admin">Admin</button>
+        <button data-tab="super" id="superTab" class="hidden">Super Admin</button>
+      </div>
+
+      <section id="tab-home">
+        <div class="grid three">
+          <div class="card audit-option">
+            <div><strong>Train Audit</strong><p class="small">Pantry, service, hygiene, food handling and rail safety.</p></div>
+            <button onclick="startAudit('train')">Start Train Audit</button>
+          </div>
+          <div class="card audit-option">
+            <div><strong>Base Kitchen Audit</strong><p class="small">Food safety, production process, inventory and staff checks.</p></div>
+            <button onclick="startAudit('base')">Start Base Kitchen Audit</button>
+          </div>
+          <div class="card audit-option">
+            <div><strong>Store Audit</strong><p class="small">Warehouse condition, security, inbound/outbound and inventory.</p></div>
+            <button onclick="startAudit('store')">Start Store Audit</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="auditForm" class="hidden">
+        <div class="card">
+          <button class="ghost" style="width:auto" onclick="showTab('home')">Back</button>
+          <h2 id="auditTitle" style="margin-top:10px"></h2>
+          <div class="grid two">
+            <div>
+              <label>Audit Date</label>
+              <input id="auditDate" type="date">
+            </div>
+            <div>
+              <label>Location / Train Name-No</label>
+              <input id="locationName" placeholder="Example: 12301 Rajdhani / Howrah Base">
+            </div>
+            <div>
+              <label>Auditor Name</label>
+              <input id="auditorName">
+            </div>
+            <div>
+              <label>Manager Name</label>
+              <input id="managerName" placeholder="Train/Base/Store Manager">
+            </div>
+            <div>
+              <label>Contact Number</label>
+              <input id="contactNumber" inputmode="tel">
+            </div>
+            <div>
+              <label>Photo/Document Reference</label>
+              <input id="docRef" placeholder="Drive link or file reference">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Score Summary</h2>
+          <div class="scorebox">
+            <div><span class="small">Score</span><b id="scoreNow">0</b></div>
+            <div><span class="small">Maximum</span><b id="scoreMax">0</b></div>
+            <div><span class="small">Compliance</span><b id="scorePct">0%</b></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Audit Rate Card</h2>
+          <div id="rateCard"></div>
+        </div>
+
+        <div class="card">
+          <h2>Stationery Compliance</h2>
+          <div id="stationeryRows" class="grid"></div>
+        </div>
+
+        <div class="card">
+          <h2>Fixed Asset Audit</h2>
+          <div id="assetRows" class="grid"></div>
+          <button class="secondary" onclick="addAssetRow()">Add Asset Row</button>
+        </div>
+
+        <div class="card">
+          <h2>Observation</h2>
+          <label>Major Observation</label>
+          <textarea id="majorObservation"></textarea>
+          <label>Corrective Action Required</label>
+          <textarea id="correctiveAction"></textarea>
+          <label>Final Remarks</label>
+          <textarea id="finalRemarks"></textarea>
+          <button class="good" onclick="submitAudit()" style="margin-top:12px">Submit Audit</button>
+          <p id="submitMsg" class="small"></p>
+        </div>
+      </section>
+
+      <section id="tab-reports" class="hidden card">
+        <h2>My Completed Reports</h2>
+        <div class="table-scroll"><table id="myReports"></table></div>
+      </section>
+
+      <section id="tab-admin" class="hidden card">
+        <h2>Central Admin</h2>
+        <p class="small">Create IDs for auditor, manager and central command view. After Firebase is connected, store these users in Firestore and create matching Authentication users.</p>
+        <div class="grid three">
+          <div><label>Name</label><input id="newUserName"></div>
+          <div><label>Email/User ID</label><input id="newUserEmail"></div>
+          <div><label>Role</label><select id="newUserRole"><option>auditor</option><option>manager</option><option>central-command</option><option>admin</option></select></div>
+        </div>
+        <button onclick="createLocalUser()" style="margin-top:12px">Create Local User Record</button>
+        <div class="table-scroll" style="margin-top:12px"><table id="userTable"></table></div>
+      </section>
+
+      <section id="tab-super" class="hidden card">
+        <h2>Super Admin</h2>
+        <p class="small">Visible only for sandipnandi2000@gmail.com in this HTML demo. Browser security does not allow downloading every file from your computer automatically, so this panel exports the app code and audit data that the page can access.</p>
+        <div class="grid two">
+          <button onclick="downloadCurrentHtml()">Download This App HTML</button>
+          <button onclick="downloadData()">Download Audit Data JSON</button>
+          <button class="warn" onclick="document.getElementById('dataUpload').click()">Upload / Overwrite Data</button>
+          <button class="secondary" onclick="testFirebase()">Test Firebase Connection</button>
+        </div>
+        <input id="dataUpload" class="hidden" type="file" accept="application/json" onchange="uploadData(event)">
+        <label>Firebase Config Area</label>
+        <textarea id="firebaseConfigText" spellcheck="false"></textarea>
+        <button onclick="saveFirebaseConfig()">Save Config Locally</button>
+        <p id="superMsg" class="small"></p>
+      </section>
+    </section>
+  </main>
+  <footer>System devolopd by Sandip Nandi . Support Number - +91 8584833366 , Mail ID - sandipnandi2000@gmail.com</footer>
+
+  <script type="module">
+    const firebaseConfig = {
+      apiKey: "AIzaSyCerJ38-29BXyMtts7tBaBD-38ZfD7rjzE",
+      authDomain: "rk-rail-audit-system.firebaseapp.com",
+      projectId: "rk-rail-audit-system",
+      storageBucket: "rk-rail-audit-system.firebasestorage.app",
+      messagingSenderId: "104291279961",
+      appId: "1:104291279961:web:0295fe8bfcd1640570bd48"
+    };
+
+    const storedConfig = localStorage.getItem("rkFirebaseConfig");
+    const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
+    const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
+    let db = null, collection = null, addDoc = null, getDocs = null, serverTimestamp = null;
+    if (firebaseReady) {
+      try {
+        const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
+        const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js");
+        collection = fsMod.collection;
+        addDoc = fsMod.addDoc;
+        getDocs = fsMod.getDocs;
+        serverTimestamp = fsMod.serverTimestamp;
+        db = fsMod.getFirestore(appMod.initializeApp(activeConfig));
+      } catch (err) { console.warn(err); }
+    }
+
+    const current = { user: null, auditType: null, responses: {}, assets: [] };
+    const auditItems = {
+      train: [
+        ["Food Handling","Storage/Insulation","Meals transported in insulated carriers; lids sealed","H",5],
+        ["Food Handling","Temperature Control","Temperatures checked pre-dispatch and onboard (>60C hot / <5C cold)","M",4],
+        ["Food Handling","IRCTC Approved Food","IRCTC approved Food items served, No Non-Branded items served","H",5],
+        ["Food Handling","Expiry/Spoilage","No expired/spoiled food onboard; rotation practiced","H",5],
+        ["Service & Hygiene","Staff Hygiene","Pantry staff in clean uniforms with IDs; gloves available","H",5],
+        ["Service & Hygiene","Sanitization","Sanitizers and surface disinfectants available and used","H",5],
+        ["Service & Hygiene","Customer Feedback","Records of Food feedback forms filled by Customers","M",4],
+        ["Service & Hygiene","Staff Attendance","Attendance record with staff briefing records","H",5],
+        ["Service & Hygiene","Waste Management","Waste segregated dry/wet and disposed at designated stations","M",4],
+        ["Safety","Fire Safety","Pantry car equipped with serviced extinguishers; access clear","H",5],
+        ["Safety","Emergency Info","Emergency contacts displayed; crew aware of procedures","M",4],
+        ["Safety","Obstruction-Free","Aisles and pantry areas unobstructed; no slip/trip hazards","M",4]
+      ],
+      base: [
+        ["Food Safety & Hygiene","","Incoming raw materials inspected; acceptance criteria met","M",5],
+        ["Food Safety & Hygiene","","Staff wear Hairnets, Gloves, Mask, Aprons, Nails trimmed","M",5],
+        ["Food Safety & Hygiene","","Handwash stations functional with soap/sanitizer","M",5],
+        ["Food Safety & Hygiene","","Cleaning schedules followed; pest logs maintained","M",5],
+        ["Production Process","","Standard recipes followed; Portion control maintained","M",5],
+        ["Production Process","","Material Issuance and consumption record vs production","M",5],
+        ["Production Process","","Critical control temperatures recorded above 75C","M",5],
+        ["Production Process","","Separation of veg/non-veg and allergen handling","M",5],
+        ["Production Process","","Waste segregated and disposed per SOP","M",5],
+        ["Statutory","","Certificates displayed: Professional Tax, VAT/LST & CST, FSSAI, Shop & Est., Labour, PF & ESI, holidays, timings, calibration","M",5],
+        ["Statutory","","Certificate nearer to expiry date or already expired checked","M",5],
+        ["Statutory","","Sign boards as per guidelines are in place","M",5],
+        ["Documentation","","Daily production sheets completed and signed","M",5],
+        ["Documentation","","Pre-dispatch QC records available","M",5],
+        ["Documentation","","Equipment calibration records current","M",5],
+        ["Damaged and Expired items","","Damaged/expired stock area divided category wise","M",5],
+        ["Damaged and Expired items","","No mix up of products with different reason","M",5],
+        ["Damaged and Expired items","","Non marketable stock lying in non-saleable area","M",5],
+        ["Inventory","","Variance short/excess found in inventory checked","M",5],
+        ["Inventory","","Damage items at store checked","M",5],
+        ["Inventory","","Expired items at store checked","M",5],
+        ["Inventory","","Stock pending for outward checked","M",5],
+        ["Inventory","","Stock pending for inward checked","M",5],
+        ["Inventory","","Pending NRGP checked","M",5],
+        ["Inventory","","IRCTC rejected item checked","M",5],
+        ["Staff Attendance","","All staff marking attendance in machine","M",5],
+        ["Staff Attendance","","Police verification and medical available for all staff","M",5],
+        ["Staff Attendance","","All staff matched with HR sheet","M",5]
+      ],
+      store: [
+        ["Store Condition","","Store neat and clean; housekeeping monitored in log sheet","M",5],
+        ["Store Condition","","Bay marking / locator matrix in place","M",5],
+        ["Store Condition","","Proper ventilation / air circulation in warehouse","M",5],
+        ["Store Condition","","Lighting proper with no loose temporary connections","M",5],
+        ["Store Condition","","No defective lights in warehouse","M",5],
+        ["Store Condition","","Proper flooring without cracks and holes","M",5],
+        ["Store Condition","","Genset/Inverter in working condition","M",5],
+        ["Store Condition","","Fans/exhaust fans are clean","M",5],
+        ["Store Condition","","Cold room/chiller/deep freezer available and used","M",5],
+        ["Store Condition","","Office area demarcated, neat and sufficient","M",5],
+        ["Store Condition","","Dust bins provided in all warehouses","M",5],
+        ["Warehouse Security & Maintenance","","Agreed security persons and supervisor on duty","M",5],
+        ["Warehouse Security & Maintenance","","Materials kept category wise with demarcated areas","M",5],
+        ["Warehouse Security & Maintenance","","Important registers maintained","M",5],
+        ["Warehouse Security & Maintenance","","Emergency numbers displayed","M",5],
+        ["Warehouse Security & Maintenance","","Fire extinguishers installed and refilled on time","M",5],
+        ["Warehouse Security & Maintenance","","Warehouse layout clear; stocks within yellow strips","M",5],
+        ["Warehouse Security & Maintenance","","First aid box available with no expired medicine","M",5],
+        ["Warehouse Security & Maintenance","","Security checks employees and workers on entry/exit","M",5],
+        ["Warehouse Security & Maintenance","","Labour register maintained day wise","M",5],
+        ["Statutory","","Required statutory certificates and documents displayed","M",5],
+        ["Statutory","","Certificate expiry status checked","M",5],
+        ["Statutory","","Company, CFA and stock signage in place","M",5],
+        ["Warehousing","","All stocks kept on pallet or plastic sheet","M",5],
+        ["Warehousing","","Stacking norms available","M",5],
+        ["Warehousing","","SKUs stored category wise / batch wise","M",5],
+        ["Warehousing","","Area demarcated for non usable items","M",5],
+        ["Warehousing","","Cold storage product kept inside cool room","M",5],
+        ["Warehousing","","Cool room temperature log maintained four times daily","M",5],
+        ["Warehousing","","FEFO followed","M",5],
+        ["Warehousing","","System and physical stock batches synchronized","M",5],
+        ["Warehousing","","Pallets stacked in proper alignment","M",5],
+        ["Warehousing","","Cycle count done regularly","M",5],
+        ["Inbound Process","","Receipt process followed using blind count or PO","M",5],
+        ["Inbound Process","","Truck arrival, unloading start and end time recorded","M",5],
+        ["Inbound Process","","Unloading done only at unloading bay","M",5],
+        ["Inbound Process","","Five percent cartons opened for shortage check","M",5],
+        ["Inbound Process","","Checked cartons taped and labelled","M",5],
+        ["Inbound Process","","Cartons handled properly during unloading","M",5],
+        ["Inbound Process","","Unloading in presence of security, driver and supervisor","M",5],
+        ["Inbound Process","","Damages/shortages recorded and informed","M",5],
+        ["Inbound Process","","Excess or wrong SKU receipt informed to vendor and HO","M",5],
+        ["Inbound Process","","Receipt acknowledged and driver signature obtained","M",5],
+        ["Outbond Process","","Truck arrival, loading start and end time noted","M",5],
+        ["Outbond Process","","Truck checked before loading for hygiene/tarpaulin/damage","M",5],
+        ["Outbond Process","","Loading in presence of security, driver and supervisor","M",5],
+        ["Outbond Process","","Material loaded as per procedure","M",5],
+        ["Outbond Process","","Carton count matches before loading completion","M",5],
+        ["Outbond Process","","STN and loading slips signed by warehouse manager","M",5],
+        ["Outbond Process","","Vehicle out time and driver signature recorded","M",5],
+        ["Outbond Process","","Delivery challan prepared for non inventory dispatch","M",5],
+        ["Damaged and Non-Saleable items","","Damaged/non-saleable area divided category wise","M",5],
+        ["Damaged and Non-Saleable items","","No mix up of expired, damaged and other items","M",5],
+        ["Damaged and Non-Saleable items","","Non marketable stock lying in non-saleable area","M",5],
+        ["Cycle Count","","Daily cycle count carried out","M",5],
+        ["Cycle Count","","Cycle count sheets filled correctly and filed","M",5],
+        ["Cycle Count","","Cycle count adjustments booked after approval","M",5],
+        ["Documentation & Record","","Files numbered and indexed","M",5],
+        ["Documentation & Record","","Documents retrievable in reasonable time","M",5],
+        ["Documentation & Record","","Serial wise filing of documents checked","M",5],
+        ["Inventory","","Variance short/excess found in inventory checked","M",5],
+        ["Inventory","","Damage items at store checked","M",5],
+        ["Inventory","","Expired items at store checked","M",5],
+        ["Inventory","","Stock pending for outward checked","M",5],
+        ["Inventory","","Stock pending for inward checked","M",5],
+        ["Inventory","","Pending NRGP checked","M",5],
+        ["Inventory","","IRCTC rejected item checked","M",5],
+        ["Staff Attendance","","All staff marking attendance in machine","M",5],
+        ["Staff Attendance","","Police verification and medical available for all staff","M",5],
+        ["Staff Attendance","","All staff matched with HR sheet","M",5]
+      ]
+    };
+    const stationery = ["Rent Aggrement","FSSAI Certificate","ISO Certificate","Aggrement between IRCTC & Licence","GST Registration","Gas Bank Safety Certificate","Pest Contraol","Trolly Permission","LOC & LOA","Fire Fighting Trainning certificate","Staff PVC police verification Certificate","Trade Licence","Fire safety NOC","Pollution NOC","Approved Brand List","Weighting Machine collabortation certificate"];
+
+    const $ = (id) => document.getElementById(id);
+    const getLocal = (key, fallback=[]) => JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    const setLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+    const titleMap = { train: "Train Audit", base: "Base Kitchen Audit", store: "Store Audit" };
+
+    window.showTab = showTab;
+    window.startAudit = startAudit;
+    window.addAssetRow = addAssetRow;
+    window.submitAudit = submitAudit;
+    window.createLocalUser = createLocalUser;
+    window.downloadData = downloadData;
+    window.uploadData = uploadData;
+    window.downloadCurrentHtml = downloadCurrentHtml;
+    window.saveFirebaseConfig = saveFirebaseConfig;
+    window.testFirebase = testFirebase;
+
+    $("loginBtn").onclick = login;
+    $("logoutBtn").onclick = () => location.reload();
+    document.querySelectorAll("[data-tab]").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
+    $("auditDate").valueAsDate = new Date();
+    $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
+
+    function login() {
+      const id = $("loginId").value.trim();
+      const pass = $("loginPassword").value;
+      if ((id === "demo" && pass === "demo") || (id === "sandipnandi2000@gmail.com" && pass === "Sanju@1234")) {
+        current.user = { id, email: id, name: id === "demo" ? "Demo Auditor" : "Sandip Nandi", role: id === "demo" ? "auditor" : "super-admin" };
+        enterApp();
+        return;
+      }
+      const users = getLocal("rkUsers", []);
+      const found = users.find(u => u.email === id || u.name === id);
+      if (found) {
+        current.user = found;
+        enterApp();
+        return;
+      }
+      $("loginMsg").textContent = "Invalid login. Use demo/demo or create a local user from Admin after logging in.";
+    }
+
+    function enterApp() {
+      $("loginScreen").classList.add("hidden");
+      $("appScreen").classList.remove("hidden");
+      $("logoutBtn").classList.remove("hidden");
+      $("superTab").classList.toggle("hidden", current.user.email !== "sandipnandi2000@gmail.com");
+      $("auditorName").value = current.user.name || current.user.email;
+      renderReports();
+      renderUsers();
+    }
+
+    function showTab(tab) {
+      ["home","reports","admin","super"].forEach(t => {
+        const el = $("tab-" + t);
+        if (el) el.classList.toggle("hidden", t !== tab);
+      });
+      $("auditForm").classList.add("hidden");
+      document.querySelectorAll("[data-tab]").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
+      if (tab === "reports") renderReports();
+      if (tab === "admin") renderUsers();
+    }
+
+    function startAudit(type) {
+      current.auditType = type;
+      current.responses = {};
+      current.assets = [];
+      $("tab-home").classList.add("hidden");
+      $("auditForm").classList.remove("hidden");
+      $("auditTitle").textContent = titleMap[type];
+      renderRateCard();
+      renderStationery();
+      addAssetRow();
+      calculateScore();
+    }
+
+    function renderRateCard() {
+      const holder = $("rateCard");
+      holder.innerHTML = "";
+      let lastCat = "";
+      auditItems[current.auditType].forEach((item, index) => {
+        const [cat, sub, point, criticality, weight] = item;
+        const box = document.createElement("div");
+        box.className = "point";
+        box.innerHTML = `
+          ${cat !== lastCat ? `<div class="pill">${cat}</div>` : ""}
+          <div class="point-head">
+            <h3>${index + 1}. ${sub ? sub + " - " : ""}${point}</h3>
+            <span class="pill">${criticality} / ${weight} pts</span>
+          </div>
+          <div class="radio-row">
+            <label><input type="radio" name="p${index}" value="yes">Yes</label>
+            <label><input type="radio" name="p${index}" value="no">No</label>
+            <label><input type="radio" name="p${index}" value="na">N/A</label>
+          </div>
+          <textarea placeholder="Remarks for this point" data-remark="${index}"></textarea>`;
+        holder.appendChild(box);
+        box.querySelectorAll("input").forEach(inp => inp.onchange = () => { current.responses[index] = inp.value; calculateScore(); });
+        lastCat = cat;
+      });
+    }
+
+    function renderStationery() {
+      const holder = $("stationeryRows");
+      holder.innerHTML = "";
+      stationery.forEach((name, i) => {
+        const row = document.createElement("div");
+        row.className = "grid two";
+        row.innerHTML = `
+          <div><label>${i + 1}. ${name}</label><select data-stationery="${i}"><option>Available</option><option>Not Available</option><option>Not Applicable</option></select></div>
+          <div><label>Validity / Remarks</label><input data-stationery-remark="${i}" placeholder="Validity date or remarks"></div>`;
+        holder.appendChild(row);
+      });
+    }
+
+    function addAssetRow() {
+      const index = current.assets.length;
+      current.assets.push({});
+      const row = document.createElement("div");
+      row.className = "grid three";
+      row.innerHTML = `
+        <div><label>Asset Name</label><input data-asset="${index}" data-field="name"></div>
+        <div><label>Asset Code</label><input data-asset="${index}" data-field="code"></div>
+        <div><label>Category</label><input data-asset="${index}" data-field="category"></div>
+        <div><label>System Qty</label><input type="number" data-asset="${index}" data-field="systemQty"></div>
+        <div><label>Physical Qty</label><input type="number" data-asset="${index}" data-field="physicalQty"></div>
+        <div><label>Tagging / Remarks</label><input data-asset="${index}" data-field="remarks"></div>`;
+      $("assetRows").appendChild(row);
+    }
+
+    function calculateScore() {
+      const items = auditItems[current.auditType] || [];
+      let score = 0, max = 0;
+      items.forEach((item, idx) => {
+        const wt = Number(item[4]) || 0;
+        if (current.responses[idx] !== "na") max += wt;
+        if (current.responses[idx] === "yes") score += wt;
+      });
+      const pct = max ? Math.round((score / max) * 100) : 0;
+      $("scoreNow").textContent = score;
+      $("scoreMax").textContent = max;
+      $("scorePct").textContent = pct + "%";
+      return { score, max, pct };
+    }
+
+    async function submitAudit() {
+      const totals = calculateScore();
+      const itemRemarks = {};
+      document.querySelectorAll("[data-remark]").forEach(el => itemRemarks[el.dataset.remark] = el.value);
+      const stationeryData = stationery.map((name, i) => ({
+        name,
+        status: document.querySelector(`[data-stationery="${i}"]`).value,
+        remarks: document.querySelector(`[data-stationery-remark="${i}"]`).value
+      }));
+      const assets = [];
+      document.querySelectorAll("[data-asset]").forEach(input => {
+        const idx = Number(input.dataset.asset);
+        assets[idx] = assets[idx] || {};
+        assets[idx][input.dataset.field] = input.value;
+      });
+      const report = {
+        id: "AUD-" + Date.now(),
+        type: current.auditType,
+        typeLabel: titleMap[current.auditType],
+        date: $("auditDate").value,
+        location: $("locationName").value,
+        auditor: $("auditorName").value,
+        auditorId: current.user.email || current.user.id,
+        manager: $("managerName").value,
+        contact: $("contactNumber").value,
+        docRef: $("docRef").value,
+        totals,
+        responses: current.responses,
+        itemRemarks,
+        stationery: stationeryData,
+        assets: assets.filter(a => Object.values(a || {}).some(Boolean)),
+        observations: {
+          major: $("majorObservation").value,
+          corrective: $("correctiveAction").value,
+          final: $("finalRemarks").value
+        },
+        createdAt: new Date().toISOString()
+      };
+      const reports = getLocal("rkAuditReports", []);
+      reports.push(report);
+      setLocal("rkAuditReports", reports);
+      if (db) {
+        try { await addDoc(collection(db, "auditReports"), { ...report, firebaseCreatedAt: serverTimestamp() }); }
+        catch (err) { console.warn(err); $("submitMsg").textContent = "Saved locally. Firebase save failed: " + err.message; return; }
+      }
+      $("submitMsg").textContent = "Audit submitted successfully. It is available in My Reports and Central Dashboard.";
+      renderReports();
+    }
+
+    async function renderReports() {
+      let reports = getLocal("rkAuditReports", []);
+      if (db) {
+        try {
+          const snap = await getDocs(collection(db, "auditReports"));
+          reports = snap.docs.map(d => d.data());
+          setLocal("rkAuditReports", reports);
+        } catch (err) { console.warn(err); }
+      }
+      const mine = reports.filter(r => !current.user || current.user.role === "super-admin" || r.auditorId === current.user.email || r.auditor === current.user.name);
+      $("myReports").innerHTML = `<tr><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Score</th><th>Status</th></tr>` +
+        mine.map(r => `<tr><td>${r.id}</td><td>${r.date || ""}</td><td>${r.typeLabel}</td><td>${r.location || ""}</td><td>${r.totals.score}/${r.totals.max} (${r.totals.pct}%)</td><td>${r.totals.pct >= 60 ? "Pass" : "Fail"}</td></tr>`).join("");
+    }
+
+    function createLocalUser() {
+      const users = getLocal("rkUsers", []);
+      users.push({ name: $("newUserName").value, email: $("newUserEmail").value, role: $("newUserRole").value });
+      setLocal("rkUsers", users);
+      renderUsers();
+    }
+
+    function renderUsers() {
+      const users = getLocal("rkUsers", []);
+      $("userTable").innerHTML = `<tr><th>Name</th><th>Email/User ID</th><th>Role</th></tr>` + users.map(u => `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td></tr>`).join("");
+    }
+
+    function downloadBlob(name, content, type) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([content], { type }));
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    function downloadData() { downloadBlob("rk-audit-data.json", JSON.stringify(getLocal("rkAuditReports", []), null, 2), "application/json"); }
+    function uploadData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { setLocal("rkAuditReports", JSON.parse(reader.result)); $("superMsg").textContent = "Data overwritten locally."; };
+      reader.readAsText(file);
+    }
+    function downloadCurrentHtml() { downloadBlob("audit_app.html", document.documentElement.outerHTML, "text/html"); }
+    function saveFirebaseConfig() {
+      try { JSON.parse($("firebaseConfigText").value); localStorage.setItem("rkFirebaseConfig", $("firebaseConfigText").value); $("superMsg").textContent = "Config saved locally. Refresh page to activate it."; }
+      catch { $("superMsg").textContent = "Config is not valid JSON."; }
+    }
+    async function testFirebase() {
+      $("superMsg").textContent = db ? "Firebase looks configured. Try submitting a test audit." : "Firebase is not active yet. Paste your real config and refresh.";
+    }
+  </script>
+</body>
+</html>
