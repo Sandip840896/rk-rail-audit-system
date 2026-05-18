@@ -122,7 +122,7 @@
     }
     .point-head { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
     .point h3 { font-size: 15px; }
-    .radio-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 9px 0; }
+    .radio-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 9px 0; }
     .radio-row label { color: var(--ink); margin: 0; }
     .radio-row input { width: auto; margin-right: 6px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -194,6 +194,10 @@
           <div class="card audit-option">
             <div><strong>Store Audit</strong><p class="small">Warehouse condition, security, inbound/outbound and inventory.</p></div>
             <button onclick="startAudit('store')">Start Store Audit</button>
+          </div>
+          <div class="card audit-option">
+            <div><strong>Manager Train Visit</strong><p class="small">Regular manager visit check for card pass, documents, grooming, staff and sales discussion.</p></div>
+            <button onclick="startAudit('managerVisit')">Start Manager Visit</button>
           </div>
         </div>
       </section>
@@ -280,8 +284,21 @@
           <div><label>Name</label><input id="newUserName"></div>
           <div><label>Email/User ID</label><input id="newUserEmail"></div>
           <div><label>Role</label><select id="newUserRole"><option>auditor</option><option>manager</option><option>central-command</option><option>admin</option></select></div>
+          <div><label>Password</label><input id="newUserPassword" type="password" placeholder="Temporary password"></div>
         </div>
-        <button onclick="createLocalUser()" style="margin-top:12px">Create Local User Record</button>
+        <h3 style="margin-top:14px">Page Access</h3>
+        <div class="table-scroll">
+          <table>
+            <tr><th>Page / Module</th><th>Read</th><th>Write</th></tr>
+            <tr><td>Train Audit</td><td><input type="checkbox" data-perm="train" data-mode="read" checked></td><td><input type="checkbox" data-perm="train" data-mode="write" checked></td></tr>
+            <tr><td>Base Kitchen Audit</td><td><input type="checkbox" data-perm="base" data-mode="read" checked></td><td><input type="checkbox" data-perm="base" data-mode="write" checked></td></tr>
+            <tr><td>Store Audit</td><td><input type="checkbox" data-perm="store" data-mode="read" checked></td><td><input type="checkbox" data-perm="store" data-mode="write" checked></td></tr>
+            <tr><td>Manager Train Visit</td><td><input type="checkbox" data-perm="managerVisit" data-mode="read" checked></td><td><input type="checkbox" data-perm="managerVisit" data-mode="write" checked></td></tr>
+            <tr><td>Central Dashboard</td><td><input type="checkbox" data-perm="dashboard" data-mode="read"></td><td><input type="checkbox" data-perm="dashboard" data-mode="write"></td></tr>
+            <tr><td>Admin User Creation</td><td><input type="checkbox" data-perm="admin" data-mode="read"></td><td><input type="checkbox" data-perm="admin" data-mode="write"></td></tr>
+          </table>
+        </div>
+        <button onclick="createUserAccount()" style="margin-top:12px">Create User ID and Password</button>
         <div class="table-scroll" style="margin-top:12px"><table id="userTable"></table></div>
       </section>
 
@@ -317,25 +334,42 @@
     const storedConfig = localStorage.getItem("rkFirebaseConfig");
     const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
     const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
-    let db = null, auth = null, collection = null, addDoc = null, getDocs = null, serverTimestamp = null, signInWithEmailAndPassword = null, signOut = null;
+    let firebaseApp = null, initializeAppFn = null, deleteAppFn = null;
+    let db = null, auth = null, collection = null, addDoc = null, getDocs = null, getDoc = null, setDoc = null, doc = null, serverTimestamp = null, signInWithEmailAndPassword = null, createUserWithEmailAndPassword = null, signOut = null, getAuthFn = null;
     if (firebaseReady) {
       try {
         const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
         const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js");
         const authMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js");
-        const app = appMod.initializeApp(activeConfig);
+        initializeAppFn = appMod.initializeApp;
+        deleteAppFn = appMod.deleteApp;
+        firebaseApp = initializeAppFn(activeConfig);
         collection = fsMod.collection;
         addDoc = fsMod.addDoc;
         getDocs = fsMod.getDocs;
+        getDoc = fsMod.getDoc;
+        setDoc = fsMod.setDoc;
+        doc = fsMod.doc;
         serverTimestamp = fsMod.serverTimestamp;
         signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
+        createUserWithEmailAndPassword = authMod.createUserWithEmailAndPassword;
         signOut = authMod.signOut;
-        db = fsMod.getFirestore(app);
-        auth = authMod.getAuth(app);
+        getAuthFn = authMod.getAuth;
+        db = fsMod.getFirestore(firebaseApp);
+        auth = getAuthFn(firebaseApp);
       } catch (err) { console.warn(err); }
     }
 
     const current = { user: null, auditType: null, responses: {}, assets: [] };
+    const fullPermissions = {
+      train: { read: true, write: true },
+      base: { read: true, write: true },
+      store: { read: true, write: true },
+      managerVisit: { read: true, write: true },
+      dashboard: { read: true, write: true },
+      admin: { read: true, write: true },
+      super: { read: true, write: true }
+    };
     const auditItems = {
       train: [
         ["Food Handling","Storage/Insulation","Meals transported in insulated carriers; lids sealed","H",5],
@@ -452,6 +486,15 @@
         ["Staff Attendance","","All staff marking attendance in machine","M",5],
         ["Staff Attendance","","Police verification and medical available for all staff","M",5],
         ["Staff Attendance","","All staff matched with HR sheet","M",5]
+      ],
+      managerVisit: [
+        ["Card Pass","Vendor Availability","Pass given by Rail Authority and actual persons available must be equal or greater than approved number","H",5],
+        ["Documents","Mandatory Documents","FSSAI, LOA, LOC, Aadhaar, PVC and medical documents available for required staff","H",5],
+        ["Grooming","Uniform & Personal Hygiene","Shoes, cap, dress, beard, haircut and cleaning properly maintained","M",5],
+        ["ID Card","Staff Identification","Every person available in train must carry valid ID card","H",5],
+        ["Complaint & Behaviour","Discussion With Team","Visiting manager discussed passenger complaints and staff behaviour improvement","M",5],
+        ["Sales Increase Plan","Commercial Discussion","Visiting manager asked and recorded plan for sale increase","M",5],
+        ["Staff Attendance","Attendance Register","Staff attendance register available, updated and matched with physical staff","H",5]
       ]
     };
     const stationery = ["Rent Aggrement","FSSAI Certificate","ISO Certificate","Aggrement between IRCTC & Licence","GST Registration","Gas Bank Safety Certificate","Pest Contraol","Trolly Permission","LOC & LOA","Fire Fighting Trainning certificate","Staff PVC police verification Certificate","Trade Licence","Fire safety NOC","Pollution NOC","Approved Brand List","Weighting Machine collabortation certificate"];
@@ -459,13 +502,13 @@
     const $ = (id) => document.getElementById(id);
     const getLocal = (key, fallback=[]) => JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
     const setLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
-    const titleMap = { train: "Train Audit", base: "Base Kitchen Audit", store: "Store Audit" };
+    const titleMap = { train: "Train Audit", base: "Base Kitchen Audit", store: "Store Audit", managerVisit: "Manager Train Visit" };
 
     window.showTab = showTab;
     window.startAudit = startAudit;
     window.addAssetRow = addAssetRow;
     window.submitAudit = submitAudit;
-    window.createLocalUser = createLocalUser;
+    window.createUserAccount = createUserAccount;
     window.downloadData = downloadData;
     window.uploadData = uploadData;
     window.downloadCurrentHtml = downloadCurrentHtml;
@@ -483,18 +526,24 @@
       const pass = $("loginPassword").value;
       $("loginMsg").textContent = "";
       if (id === "demo" && pass === "demo") {
-        current.user = { id, email: id, name: "Demo Auditor", role: "auditor" };
+        current.user = { id, email: id, name: "Demo Auditor", role: "auditor", permissions: fullPermissions };
         enterApp();
         return;
       }
       if (auth && signInWithEmailAndPassword && id.includes("@")) {
         try {
           const result = await signInWithEmailAndPassword(auth, id, pass);
+          let profile = null;
+          if (db && getDoc && doc) {
+            const profileSnap = await getDoc(doc(db, "users", result.user.uid)).catch(() => null);
+            profile = profileSnap && profileSnap.exists() ? profileSnap.data() : null;
+          }
           current.user = {
             id: result.user.uid,
             email: result.user.email,
-            name: result.user.email === "sandipnandi2000@gmail.com" ? "Sandip Nandi" : result.user.email,
-            role: result.user.email === "sandipnandi2000@gmail.com" ? "super-admin" : "auditor"
+            name: profile?.name || (result.user.email === "sandipnandi2000@gmail.com" ? "Sandip Nandi" : result.user.email),
+            role: result.user.email === "sandipnandi2000@gmail.com" ? "super-admin" : (profile?.role || "auditor"),
+            permissions: result.user.email === "sandipnandi2000@gmail.com" ? fullPermissions : (profile?.permissions || {})
           };
           enterApp();
           return;
@@ -506,6 +555,7 @@
       const users = getLocal("rkUsers", []);
       const found = users.find(u => u.email === id || u.name === id);
       if (found) {
+        found.permissions = found.permissions || fullPermissions;
         current.user = found;
         enterApp();
         return;
@@ -518,9 +568,26 @@
       $("appScreen").classList.remove("hidden");
       $("logoutBtn").classList.remove("hidden");
       $("superTab").classList.toggle("hidden", current.user.email !== "sandipnandi2000@gmail.com");
+      document.querySelector('[data-tab="admin"]').classList.toggle("hidden", !canRead("admin") && current.user.role !== "super-admin");
       $("auditorName").value = current.user.name || current.user.email;
+      document.querySelectorAll(".audit-option button").forEach(btn => {
+        const match = btn.getAttribute("onclick")?.match(/startAudit\('(.+)'\)/);
+        if (match) btn.disabled = !canWrite(match[1]);
+      });
       renderReports();
       renderUsers();
+    }
+
+    function canRead(page) {
+      if (!current.user) return false;
+      if (current.user.role === "super-admin" || current.user.email === "sandipnandi2000@gmail.com") return true;
+      return !!current.user.permissions?.[page]?.read;
+    }
+
+    function canWrite(page) {
+      if (!current.user) return false;
+      if (current.user.role === "super-admin" || current.user.email === "sandipnandi2000@gmail.com") return true;
+      return !!current.user.permissions?.[page]?.write;
     }
 
     function showTab(tab) {
@@ -535,6 +602,10 @@
     }
 
     function startAudit(type) {
+      if (!canWrite(type)) {
+        alert("You do not have write access for " + titleMap[type] + ".");
+        return;
+      }
       current.auditType = type;
       current.responses = {};
       current.assets = [];
@@ -562,8 +633,9 @@
             <span class="pill">${criticality} / ${weight} pts</span>
           </div>
           <div class="radio-row">
-            <label><input type="radio" name="p${index}" value="yes">Yes</label>
-            <label><input type="radio" name="p${index}" value="no">No</label>
+            <label><input type="radio" name="p${index}" value="yes">Maintained</label>
+            <label><input type="radio" name="p${index}" value="partial">Needs Improvement</label>
+            <label><input type="radio" name="p${index}" value="no">Not Maintain</label>
             <label><input type="radio" name="p${index}" value="na">N/A</label>
           </div>
           <textarea placeholder="Remarks for this point" data-remark="${index}"></textarea>`;
@@ -605,9 +677,9 @@
       const items = auditItems[current.auditType] || [];
       let score = 0, max = 0;
       items.forEach((item, idx) => {
-        const wt = Number(item[4]) || 0;
-        if (current.responses[idx] !== "na") max += wt;
-        if (current.responses[idx] === "yes") score += wt;
+        if (current.responses[idx] !== "na") max += 5;
+        if (current.responses[idx] === "yes") score += 5;
+        if (current.responses[idx] === "partial") score += 3;
       });
       const pct = max ? Math.round((score / max) * 100) : 0;
       $("scoreNow").textContent = score;
@@ -617,6 +689,10 @@
     }
 
     async function submitAudit() {
+      if (!canWrite(current.auditType)) {
+        $("submitMsg").textContent = "You do not have write access for this audit.";
+        return;
+      }
       const totals = calculateScore();
       const itemRemarks = {};
       document.querySelectorAll("[data-remark]").forEach(el => itemRemarks[el.dataset.remark] = el.value);
@@ -679,16 +755,75 @@
         mine.map(r => `<tr><td>${r.id}</td><td>${r.date || ""}</td><td>${r.typeLabel}</td><td>${r.location || ""}</td><td>${r.totals.score}/${r.totals.max} (${r.totals.pct}%)</td><td>${r.totals.pct >= 60 ? "Pass" : "Fail"}</td></tr>`).join("");
     }
 
-    function createLocalUser() {
-      const users = getLocal("rkUsers", []);
-      users.push({ name: $("newUserName").value, email: $("newUserEmail").value, role: $("newUserRole").value });
-      setLocal("rkUsers", users);
-      renderUsers();
+    function collectPermissions() {
+      const permissions = {};
+      document.querySelectorAll("[data-perm]").forEach(input => {
+        const page = input.dataset.perm;
+        const mode = input.dataset.mode;
+        permissions[page] = permissions[page] || { read: false, write: false };
+        permissions[page][mode] = input.checked;
+      });
+      return permissions;
     }
 
-    function renderUsers() {
+    async function createUserAccount() {
+      if (!canWrite("admin")) {
+        alert("You do not have admin write access.");
+        return;
+      }
+      const name = $("newUserName").value.trim();
+      const email = $("newUserEmail").value.trim();
+      const role = $("newUserRole").value;
+      const password = $("newUserPassword").value;
+      const permissions = collectPermissions();
+      if (!name || !email || !password) {
+        alert("Please enter name, email/user ID and password.");
+        return;
+      }
+      if (!email.includes("@")) {
+        alert("Firebase Authentication requires an email address. Please use an email as User ID.");
+        return;
+      }
+      let uid = "local-" + Date.now();
+      if (auth && createUserWithEmailAndPassword && initializeAppFn && getAuthFn) {
+        const secondaryApp = initializeAppFn(activeConfig, "userCreator" + Date.now());
+        const secondaryAuth = getAuthFn(secondaryApp);
+        try {
+          const created = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+          uid = created.user.uid;
+          await signOut(secondaryAuth).catch(() => {});
+        } catch (err) {
+          alert("User creation failed: " + err.message);
+          if (deleteAppFn) await deleteAppFn(secondaryApp).catch(() => {});
+          return;
+        }
+        if (deleteAppFn) await deleteAppFn(secondaryApp).catch(() => {});
+      }
+      const userRecord = { uid, name, email, role, permissions, createdAt: new Date().toISOString(), createdBy: current.user.email || current.user.id };
+      if (db && setDoc && doc) {
+        await setDoc(doc(db, "users", uid), userRecord);
+      }
       const users = getLocal("rkUsers", []);
-      $("userTable").innerHTML = `<tr><th>Name</th><th>Email/User ID</th><th>Role</th></tr>` + users.map(u => `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td></tr>`).join("");
+      users.push(userRecord);
+      setLocal("rkUsers", users);
+      $("newUserPassword").value = "";
+      renderUsers();
+      alert("User created successfully. This ID can now login and save data according to permissions.");
+    }
+
+    async function renderUsers() {
+      let users = getLocal("rkUsers", []);
+      if (db && getDocs && collection && canRead("admin")) {
+        try {
+          const snap = await getDocs(collection(db, "users"));
+          users = snap.docs.map(d => d.data());
+          setLocal("rkUsers", users);
+        } catch (err) { console.warn(err); }
+      }
+      $("userTable").innerHTML = `<tr><th>Name</th><th>Email/User ID</th><th>Role</th><th>Access</th></tr>` + users.map(u => {
+        const access = Object.entries(u.permissions || {}).filter(([,p]) => p.read || p.write).map(([k,p]) => `${k}: ${p.read ? "R" : ""}${p.write ? "W" : ""}`).join(", ");
+        return `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td>${access}</td></tr>`;
+      }).join("");
     }
 
     function downloadBlob(name, content, type) {

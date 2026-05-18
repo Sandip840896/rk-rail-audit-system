@@ -78,7 +78,7 @@
       <section id="tab-reports" class="hidden card">
         <h2>Completed Audit Reports</h2>
         <div class="grid four">
-          <div><label>Audit Type</label><select id="filterType"><option value="">All</option><option value="train">Train</option><option value="base">Base Kitchen</option><option value="store">Store</option></select></div>
+          <div><label>Audit Type</label><select id="filterType"><option value="">All</option><option value="train">Train</option><option value="base">Base Kitchen</option><option value="store">Store</option><option value="managerVisit">Manager Train Visit</option></select></div>
           <div><label>Auditor</label><input id="filterAuditor" placeholder="Name or ID"></div>
           <div><label>From Date</label><input id="filterFrom" type="date"></div>
           <div><label>To Date</label><input id="filterTo" type="date"></div>
@@ -128,7 +128,7 @@
     const storedConfig = localStorage.getItem("rkFirebaseConfig");
     const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
     const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
-    let db = null, auth = null, collection = null, getDocs = null, signInWithEmailAndPassword = null, signOut = null;
+    let db = null, auth = null, collection = null, getDocs = null, getDoc = null, doc = null, signInWithEmailAndPassword = null, signOut = null;
     if (firebaseReady) {
       try {
         const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
@@ -137,6 +137,8 @@
         const app = appMod.initializeApp(activeConfig);
         collection = fsMod.collection;
         getDocs = fsMod.getDocs;
+        getDoc = fsMod.getDoc;
+        doc = fsMod.doc;
         signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
         signOut = authMod.signOut;
         db = fsMod.getFirestore(app);
@@ -147,6 +149,7 @@
     const getLocal = (key, fallback=[]) => JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
     const setLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
     let reports = [];
+    let currentUser = null;
     window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig;
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
     $("loginBtn").onclick = login;
@@ -158,11 +161,26 @@
       const id = $("loginId").value.trim(), pass = $("loginPassword").value;
       $("loginMsg").textContent = "";
       if (id === "demo" && pass === "demo") {
+        currentUser = { email: "demo", permissions: { dashboard: { read: true, write: false } } };
         $("loginScreen").classList.add("hidden"); $("dashScreen").classList.remove("hidden"); $("logoutBtn").classList.remove("hidden"); loadReports(); return;
       }
       if (auth && signInWithEmailAndPassword && id.includes("@")) {
         try {
-          await signInWithEmailAndPassword(auth, id, pass);
+          const result = await signInWithEmailAndPassword(auth, id, pass);
+          let profile = null;
+          if (db && getDoc && doc) {
+            const snap = await getDoc(doc(db, "users", result.user.uid)).catch(() => null);
+            profile = snap && snap.exists() ? snap.data() : null;
+          }
+          currentUser = {
+            email: result.user.email,
+            role: result.user.email === "sandipnandi2000@gmail.com" ? "super-admin" : (profile?.role || "auditor"),
+            permissions: result.user.email === "sandipnandi2000@gmail.com" ? { dashboard: { read: true, write: true } } : (profile?.permissions || {})
+          };
+          if (!canReadDashboard()) {
+            $("loginMsg").textContent = "Login successful, but this user does not have Central Dashboard read access.";
+            return;
+          }
           $("loginScreen").classList.add("hidden"); $("dashScreen").classList.remove("hidden"); $("logoutBtn").classList.remove("hidden"); loadReports(); return;
         } catch (err) {
           $("loginMsg").textContent = "Firebase login failed: " + err.message;
@@ -170,6 +188,9 @@
         }
       }
       $("loginMsg").textContent = "Invalid login. Use demo/demo or a Firebase email/password user.";
+    }
+    function canReadDashboard() {
+      return currentUser?.role === "super-admin" || !!currentUser?.permissions?.dashboard?.read;
     }
     function showTab(tab) {
       ["overview","reports","analytics","data"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== tab));
@@ -205,7 +226,7 @@
       const avg = data.length ? Math.round(data.reduce((s,r)=>s+(r.totals?.pct||0),0)/data.length) : 0;
       $("kTotal").textContent = data.length; $("kAvg").textContent = avg + "%"; $("kPass").textContent = pass; $("kFail").textContent = fail;
       renderTable(data); renderRisk(data); renderFindings(data);
-      barChart("typeChart", countBy(data, r => r.typeLabel || r.type), ["#123c69","#d8343a","#14804a"]);
+      barChart("typeChart", countBy(data, r => r.typeLabel || r.type), ["#123c69","#d8343a","#14804a","#b76e00"]);
       barChart("scoreChart", scoreBands(data), ["#d8343a","#b76e00","#14804a","#123c69"]);
       barChart("auditorChart", countBy(data, r => r.auditor || "Unknown"), ["#123c69"]);
       barChart("categoryChart", weakCategories(data), ["#d8343a"]);
@@ -221,7 +242,9 @@
     }
     function renderFindings(data) {
       const rows = [];
-      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => { if (val === "no") rows.push([r.date, r.typeLabel || r.type, r.location, r.auditor, "Failed point #" + (Number(idx)+1), r.itemRemarks?.[idx] || ""]); }));
+      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => {
+        if (val === "no" || val === "partial") rows.push([r.date, r.typeLabel || r.type, r.location, r.auditor, (val === "partial" ? "Needs improvement point #" : "Failed point #") + (Number(idx)+1), r.itemRemarks?.[idx] || ""]);
+      }));
       $("findingTable").innerHTML = `<tr><th>Date</th><th>Audit</th><th>Location</th><th>Auditor</th><th>Finding</th><th>Remarks</th></tr>` + rows.map(x => `<tr>${x.map(v=>`<td>${v||""}</td>`).join("")}</tr>`).join("");
     }
     function countBy(data, fn) { const o={}; data.forEach(r => { const k=fn(r)||"Unknown"; o[k]=(o[k]||0)+1; }); return o; }
@@ -265,7 +288,8 @@
       return [
         {id:"DEMO-TRAIN-1",type:"train",typeLabel:"Train Audit",date:"2026-05-15",location:"12301 Rajdhani",auditor:"Demo Auditor",totals:{score:42,max:55,pct:76},responses:{1:"no",4:"yes"},itemRemarks:{1:"Temperature log not complete"},observations:{major:"Temperature register needs daily control."}},
         {id:"DEMO-BASE-1",type:"base",typeLabel:"Base Kitchen Audit",date:"2026-05-16",location:"Howrah Base Kitchen",auditor:"Demo Auditor",totals:{score:95,max:140,pct:68},responses:{10:"no",21:"no"},itemRemarks:{10:"One certificate near expiry",21:"Pending outward stock found"},observations:{major:"Inventory follow-up required."}},
-        {id:"DEMO-STORE-1",type:"store",typeLabel:"Store Audit",date:"2026-05-17",location:"Kolkata Store",auditor:"Central Team",totals:{score:240,max:350,pct:69},responses:{4:"no",15:"no",33:"no"},itemRemarks:{15:"Extinguisher refill due"},observations:{major:"Fire and inbound documentation need attention."}}
+        {id:"DEMO-STORE-1",type:"store",typeLabel:"Store Audit",date:"2026-05-17",location:"Kolkata Store",auditor:"Central Team",totals:{score:240,max:350,pct:69},responses:{4:"no",15:"no",33:"no"},itemRemarks:{15:"Extinguisher refill due"},observations:{major:"Fire and inbound documentation need attention."}},
+        {id:"DEMO-MVISIT-1",type:"managerVisit",typeLabel:"Manager Train Visit",date:"2026-05-18",location:"12259 Duronto",auditor:"Area Manager",totals:{score:28,max:35,pct:80},responses:{1:"partial",3:"yes"},itemRemarks:{1:"One staff medical pending"},observations:{major:"Documents mostly available; follow-up medical pending."}}
       ];
     }
   </script>
