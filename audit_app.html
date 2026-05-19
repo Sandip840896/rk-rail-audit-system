@@ -183,19 +183,19 @@
 
       <section id="tab-home">
         <div class="grid three">
-          <div class="card audit-option">
+          <div class="card audit-option" data-audit="train">
             <div><strong>Train Audit</strong><p class="small">Pantry, service, hygiene, food handling and rail safety.</p></div>
             <button onclick="startAudit('train')">Start Train Audit</button>
           </div>
-          <div class="card audit-option">
+          <div class="card audit-option" data-audit="base">
             <div><strong>Base Kitchen Audit</strong><p class="small">Food safety, production process, inventory and staff checks.</p></div>
             <button onclick="startAudit('base')">Start Base Kitchen Audit</button>
           </div>
-          <div class="card audit-option">
+          <div class="card audit-option" data-audit="store">
             <div><strong>Store Audit</strong><p class="small">Warehouse condition, security, inbound/outbound and inventory.</p></div>
             <button onclick="startAudit('store')">Start Store Audit</button>
           </div>
-          <div class="card audit-option">
+          <div class="card audit-option" data-audit="managerVisit">
             <div><strong>Manager Train Visit</strong><p class="small">Regular manager visit check for card pass, documents, grooming, staff and sales discussion.</p></div>
             <button onclick="startAudit('managerVisit')">Start Manager Visit</button>
           </div>
@@ -286,6 +286,7 @@
           <div><label>Role</label><select id="newUserRole"><option>auditor</option><option>manager</option><option>central-command</option><option>admin</option></select></div>
           <div><label>Password</label><input id="newUserPassword" type="password" placeholder="Temporary password"></div>
         </div>
+        <input id="editingUserUid" type="hidden">
         <h3 style="margin-top:14px">Page Access</h3>
         <div class="table-scroll">
           <table>
@@ -298,7 +299,11 @@
             <tr><td>Admin User Creation</td><td><input type="checkbox" data-perm="admin" data-mode="read"></td><td><input type="checkbox" data-perm="admin" data-mode="write"></td></tr>
           </table>
         </div>
-        <button onclick="createUserAccount()" style="margin-top:12px">Create User ID and Password</button>
+        <div class="grid three" style="margin-top:12px">
+          <button id="saveUserBtn" onclick="saveUserAccount()">Create User ID and Password</button>
+          <button class="secondary" onclick="resetUserForm()">Clear Form</button>
+          <button class="warn" onclick="sendSelectedPasswordReset()">Send Password Reset</button>
+        </div>
         <div class="table-scroll" style="margin-top:12px"><table id="userTable"></table></div>
       </section>
 
@@ -335,7 +340,7 @@
     const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
     const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
     let firebaseApp = null, initializeAppFn = null, deleteAppFn = null;
-    let db = null, auth = null, collection = null, addDoc = null, getDocs = null, getDoc = null, setDoc = null, doc = null, serverTimestamp = null, signInWithEmailAndPassword = null, createUserWithEmailAndPassword = null, signOut = null, getAuthFn = null;
+    let db = null, auth = null, collection = null, addDoc = null, getDocs = null, getDoc = null, setDoc = null, doc = null, serverTimestamp = null, signInWithEmailAndPassword = null, createUserWithEmailAndPassword = null, sendPasswordResetEmail = null, signOut = null, getAuthFn = null;
     if (firebaseReady) {
       try {
         const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
@@ -353,6 +358,7 @@
         serverTimestamp = fsMod.serverTimestamp;
         signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
         createUserWithEmailAndPassword = authMod.createUserWithEmailAndPassword;
+        sendPasswordResetEmail = authMod.sendPasswordResetEmail;
         signOut = authMod.signOut;
         getAuthFn = authMod.getAuth;
         db = fsMod.getFirestore(firebaseApp);
@@ -508,7 +514,10 @@
     window.startAudit = startAudit;
     window.addAssetRow = addAssetRow;
     window.submitAudit = submitAudit;
-    window.createUserAccount = createUserAccount;
+    window.saveUserAccount = saveUserAccount;
+    window.editUserAccount = editUserAccount;
+    window.resetUserForm = resetUserForm;
+    window.sendSelectedPasswordReset = sendSelectedPasswordReset;
     window.downloadData = downloadData;
     window.uploadData = uploadData;
     window.downloadCurrentHtml = downloadCurrentHtml;
@@ -570,9 +579,12 @@
       $("superTab").classList.toggle("hidden", current.user.email !== "sandipnandi2000@gmail.com");
       document.querySelector('[data-tab="admin"]').classList.toggle("hidden", !canRead("admin") && current.user.role !== "super-admin");
       $("auditorName").value = current.user.name || current.user.email;
-      document.querySelectorAll(".audit-option button").forEach(btn => {
-        const match = btn.getAttribute("onclick")?.match(/startAudit\('(.+)'\)/);
-        if (match) btn.disabled = !canWrite(match[1]);
+      document.querySelectorAll(".audit-option").forEach(card => {
+        const type = card.dataset.audit;
+        const visible = canRead(type) || canWrite(type);
+        card.classList.toggle("hidden", !visible);
+        const btn = card.querySelector("button");
+        if (btn) btn.disabled = !canWrite(type);
       });
       renderReports();
       renderUsers();
@@ -750,7 +762,11 @@
           setLocal("rkAuditReports", reports);
         } catch (err) { console.warn(err); }
       }
-      const mine = reports.filter(r => !current.user || current.user.role === "super-admin" || r.auditorId === current.user.email || r.auditor === current.user.name);
+      const mine = reports.filter(r => {
+        const readable = canRead(r.type);
+        const ownReport = r.auditorId === current.user.email || r.auditor === current.user.name;
+        return current.user.role === "super-admin" || (readable && ownReport) || (readable && canRead("dashboard"));
+      });
       $("myReports").innerHTML = `<tr><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Score</th><th>Status</th></tr>` +
         mine.map(r => `<tr><td>${r.id}</td><td>${r.date || ""}</td><td>${r.typeLabel}</td><td>${r.location || ""}</td><td>${r.totals.score}/${r.totals.max} (${r.totals.pct}%)</td><td>${r.totals.pct >= 60 ? "Pass" : "Fail"}</td></tr>`).join("");
     }
@@ -766,22 +782,97 @@
       return permissions;
     }
 
-    async function createUserAccount() {
+    function setPermissionForm(permissions = {}) {
+      document.querySelectorAll("[data-perm]").forEach(input => {
+        const page = input.dataset.perm;
+        const mode = input.dataset.mode;
+        input.checked = !!permissions?.[page]?.[mode];
+      });
+    }
+
+    function resetUserForm() {
+      $("editingUserUid").value = "";
+      $("newUserName").value = "";
+      $("newUserEmail").value = "";
+      $("newUserEmail").disabled = false;
+      $("newUserPassword").value = "";
+      $("newUserPassword").placeholder = "Temporary password";
+      $("newUserRole").value = "auditor";
+      setPermissionForm({
+        train: { read: true, write: true },
+        base: { read: true, write: true },
+        store: { read: true, write: true },
+        managerVisit: { read: true, write: true },
+        dashboard: { read: false, write: false },
+        admin: { read: false, write: false }
+      });
+      $("saveUserBtn").textContent = "Create User ID and Password";
+    }
+
+    function editUserAccount(uid) {
+      const users = getLocal("rkUsers", []);
+      const user = users.find(u => u.uid === uid);
+      if (!user) {
+        alert("User record not found locally. Click Admin again to refresh and try.");
+        return;
+      }
+      $("editingUserUid").value = user.uid;
+      $("newUserName").value = user.name || "";
+      $("newUserEmail").value = user.email || "";
+      $("newUserEmail").disabled = true;
+      $("newUserPassword").value = "";
+      $("newUserPassword").placeholder = "Password cannot be viewed. Use reset email if needed.";
+      $("newUserRole").value = user.role || "auditor";
+      setPermissionForm(user.permissions || {});
+      $("saveUserBtn").textContent = "Save Edited User Access";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function sendSelectedPasswordReset() {
+      const email = $("newUserEmail").value.trim();
+      if (!email || !email.includes("@")) {
+        alert("Select or enter a valid email first.");
+        return;
+      }
+      if (!auth || !sendPasswordResetEmail) {
+        alert("Firebase Authentication is not ready.");
+        return;
+      }
+      await sendPasswordResetEmail(auth, email);
+      alert("Password reset email sent to " + email + ".");
+    }
+
+    async function saveUserAccount() {
       if (!canWrite("admin")) {
         alert("You do not have admin write access.");
         return;
       }
+      const editingUid = $("editingUserUid").value;
       const name = $("newUserName").value.trim();
       const email = $("newUserEmail").value.trim();
       const role = $("newUserRole").value;
       const password = $("newUserPassword").value;
       const permissions = collectPermissions();
-      if (!name || !email || !password) {
+      if (!name || !email || (!editingUid && !password)) {
         alert("Please enter name, email/user ID and password.");
         return;
       }
       if (!email.includes("@")) {
         alert("Firebase Authentication requires an email address. Please use an email as User ID.");
+        return;
+      }
+      if (editingUid) {
+        const userRecord = { uid: editingUid, name, email, role, permissions, updatedAt: new Date().toISOString(), updatedBy: current.user.email || current.user.id };
+        if (db && setDoc && doc) {
+          await setDoc(doc(db, "users", editingUid), userRecord, { merge: true });
+        }
+        const users = getLocal("rkUsers", []);
+        const idx = users.findIndex(u => u.uid === editingUid);
+        if (idx >= 0) users[idx] = { ...users[idx], ...userRecord };
+        setLocal("rkUsers", users);
+        renderUsers();
+        alert("User access updated successfully. Ask the user to logout and login again.");
+        resetUserForm();
         return;
       }
       let uid = "local-" + Date.now();
@@ -806,9 +897,9 @@
       const users = getLocal("rkUsers", []);
       users.push(userRecord);
       setLocal("rkUsers", users);
-      $("newUserPassword").value = "";
       renderUsers();
       alert("User created successfully. This ID can now login and save data according to permissions.");
+      resetUserForm();
     }
 
     async function renderUsers() {
@@ -816,13 +907,13 @@
       if (db && getDocs && collection && canRead("admin")) {
         try {
           const snap = await getDocs(collection(db, "users"));
-          users = snap.docs.map(d => d.data());
+          users = snap.docs.map(d => ({ uid: d.id, ...d.data(), uid: d.data().uid || d.id }));
           setLocal("rkUsers", users);
         } catch (err) { console.warn(err); }
       }
-      $("userTable").innerHTML = `<tr><th>Name</th><th>Email/User ID</th><th>Role</th><th>Access</th></tr>` + users.map(u => {
+      $("userTable").innerHTML = `<tr><th>Name</th><th>Email/User ID</th><th>Role</th><th>Access</th><th>Edit</th></tr>` + users.map(u => {
         const access = Object.entries(u.permissions || {}).filter(([,p]) => p.read || p.write).map(([k,p]) => `${k}: ${p.read ? "R" : ""}${p.write ? "W" : ""}`).join(", ");
-        return `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td>${access}</td></tr>`;
+        return `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td>${access}</td><td><button class="ghost" onclick="editUserAccount('${u.uid}')" style="width:auto">Edit</button></td></tr>`;
       }).join("");
     }
 
