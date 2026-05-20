@@ -129,6 +129,11 @@
     .photo-thumb { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #f4f7fb; }
     .photo-thumb img { width: 100%; height: 92px; object-fit: cover; display: block; }
     .photo-thumb button { border-radius: 0; padding: 7px; font-size: 12px; }
+    .point-score { min-width: 78px; text-align: center; background: #f4f7fb; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-weight: 900; color: var(--rail-blue); }
+    .evidence-box { margin-top: 10px; padding: 10px; border: 1px dashed #b8c2d4; border-radius: 8px; background: #f8fafc; }
+    .success-modal { position: fixed; inset: 0; z-index: 30; background: rgba(17,24,39,.66); display: grid; place-items: center; padding: 18px; }
+    .success-card { background: white; color: var(--ink); border-radius: 8px; max-width: 360px; width: 100%; text-align: center; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+    .train-thumbs { font-size: 44px; margin: 6px 0 10px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
     th { background: #eef5fb; color: var(--rail-blue); }
@@ -168,11 +173,11 @@
   <main>
     <section id="loginScreen" class="card" style="max-width:440px;margin:auto">
       <h2>Login</h2>
-      <p class="small">Use demo/demo for testing. Firebase login will work after configuration.</p>
+      <p class="small">Demo login is for viewing only and should not be used for official audit work. For actual audit entry and saving, use your assigned user ID and password.</p>
       <label>User ID or Email</label>
-      <input id="loginId" autocomplete="username" value="demo">
+      <input id="loginId" autocomplete="username" placeholder="Enter assigned user ID or demo">
       <label>Password</label>
-      <input id="loginPassword" type="password" autocomplete="current-password" value="demo">
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter password">
       <button id="loginBtn" style="margin-top:12px">Login</button>
       <p id="loginMsg" class="small"></p>
     </section>
@@ -182,6 +187,7 @@
         <button data-tab="home" class="active">Audit</button>
         <button data-tab="reports">My Reports</button>
         <button data-tab="admin">Admin</button>
+        <button data-tab="masters" id="mastersTab">Masters</button>
         <button data-tab="super" id="superTab" class="hidden">Super Admin</button>
       </div>
 
@@ -218,6 +224,14 @@
             <div>
               <label>Location / Train Name-No</label>
               <input id="locationName" placeholder="Example: 12301 Rajdhani / Howrah Base">
+            </div>
+            <div>
+              <label>Choose From Master</label>
+              <select id="masterSelect"></select>
+            </div>
+            <div>
+              <label>Master Detail</label>
+              <input id="masterDetail" placeholder="Auto-filled from master or manual detail">
             </div>
             <div>
               <label>Auditor Name</label>
@@ -289,6 +303,21 @@
 
       <section id="tab-reports" class="hidden card">
         <h2>My Completed Reports</h2>
+        <div class="grid three">
+          <div><label>From Date</label><input id="myFromDate" type="date"></div>
+          <div><label>To Date</label><input id="myToDate" type="date"></div>
+          <div><label>Audit Type</label><select id="myReportType"><option value="">All</option><option value="train">Train</option><option value="base">Base Kitchen</option><option value="store">Store</option><option value="managerVisit">Manager Train Visit</option></select></div>
+        </div>
+        <div class="grid three" style="margin:12px 0">
+          <button onclick="renderReports()">Apply Filter</button>
+          <button class="secondary" onclick="downloadMyExcel()">Download Excel</button>
+          <button class="ghost" onclick="clearReportFilters()">Clear Filter</button>
+        </div>
+        <div class="scorebox">
+          <div><span class="small">Total Audits</span><b id="myAuditCount">0</b></div>
+          <div><span class="small">Average Score</span><b id="myAuditAvg">0%</b></div>
+          <div><span class="small">Audit Types</span><b id="myAuditTypes">0</b></div>
+        </div>
         <div class="table-scroll"><table id="myReports"></table></div>
       </section>
 
@@ -319,7 +348,33 @@
           <button class="secondary" onclick="resetUserForm()">Clear Form</button>
           <button class="warn" onclick="sendSelectedPasswordReset()">Send Password Reset</button>
         </div>
+        <div class="card" style="margin-top:12px;box-shadow:none">
+          <h3>Bulk User Upload</h3>
+          <p class="small">Download sample CSV, fill users and page permissions, then upload to create multiple Firebase users.</p>
+          <div class="grid three">
+            <button onclick="downloadBulkUserSample()">Download User Sample</button>
+            <div><label>Upload User CSV</label><input id="bulkUserUpload" type="file" accept=".csv"></div>
+            <div><label>Status</label><input id="bulkUserStatus" readonly></div>
+          </div>
+        </div>
         <div class="table-scroll" style="margin-top:12px"><table id="userTable"></table></div>
+      </section>
+
+      <section id="tab-masters" class="hidden card">
+        <h2>Master Data</h2>
+        <p class="small">Upload CSV masters for trains, stores, base kitchens and assets. If a train, store or base kitchen is not listed, auditors can still enter details manually.</p>
+        <div class="grid three">
+          <div><label>Train Master CSV</label><input id="trainMasterUpload" type="file" accept=".csv"></div>
+          <div><label>Store Master CSV</label><input id="storeMasterUpload" type="file" accept=".csv"></div>
+          <div><label>Base Kitchen Master CSV</label><input id="baseMasterUpload" type="file" accept=".csv"></div>
+          <div><label>Asset Master CSV</label><input id="assetMasterUpload" type="file" accept=".csv"></div>
+        </div>
+        <div class="grid three" style="margin-top:12px">
+          <button onclick="downloadMasterSample('train')">Train Sample</button>
+          <button onclick="downloadMasterSample('site')">Store/Base Sample</button>
+          <button onclick="downloadMasterSample('asset')">Asset Sample</button>
+        </div>
+        <div class="table-scroll" style="margin-top:12px"><table id="masterSummaryTable"></table></div>
       </section>
 
       <section id="tab-super" class="hidden card">
@@ -330,6 +385,7 @@
           <button onclick="downloadData()">Download Audit Data JSON</button>
           <button class="warn" onclick="document.getElementById('dataUpload').click()">Upload / Overwrite Data</button>
           <button class="secondary" onclick="testFirebase()">Test Firebase Connection</button>
+          <button class="danger" onclick="deleteAuditRecordsPrompt()">Delete All Audit Records</button>
         </div>
         <input id="dataUpload" class="hidden" type="file" accept="application/json" onchange="uploadData(event)">
         <label>Firebase Config Area</label>
@@ -337,6 +393,23 @@
         <button onclick="saveFirebaseConfig()">Save Config Locally</button>
         <p id="superMsg" class="small"></p>
       </section>
+    </section>
+    <section id="auditDetailPanel" class="success-modal hidden">
+      <div class="success-card" style="max-width:920px;text-align:left;max-height:88vh;overflow:auto">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+          <h2 id="auditDetailTitle">Audit Detail</h2>
+          <button class="ghost" onclick="closeAuditDetail()" style="width:auto">Close</button>
+        </div>
+        <div id="auditDetailBody"></div>
+      </div>
+    </section>
+    <section id="successModal" class="success-modal hidden">
+      <div class="success-card">
+        <div class="train-thumbs">TRAIN OK</div>
+        <h2>Audit saved successfully</h2>
+        <p class="small">Report is ready in My Reports and Central Dashboard.</p>
+        <button onclick="closeSuccessModal()">Done</button>
+      </div>
     </section>
   </main>
   <footer>System devolopd by Sandip Nandi . Support Number - +91 8584833366 , Mail ID - sandipnandi2000@gmail.com</footer>
@@ -355,7 +428,7 @@
     const activeConfig = storedConfig ? JSON.parse(storedConfig) : firebaseConfig;
     const firebaseReady = activeConfig.apiKey && !String(activeConfig.apiKey).includes("PASTE_");
     let firebaseApp = null, initializeAppFn = null, deleteAppFn = null;
-    let db = null, auth = null, collection = null, addDoc = null, getDocs = null, getDoc = null, setDoc = null, doc = null, serverTimestamp = null, signInWithEmailAndPassword = null, createUserWithEmailAndPassword = null, sendPasswordResetEmail = null, signOut = null, getAuthFn = null;
+    let db = null, auth = null, collection = null, addDoc = null, getDocs = null, getDoc = null, setDoc = null, deleteDoc = null, doc = null, serverTimestamp = null, signInWithEmailAndPassword = null, createUserWithEmailAndPassword = null, sendPasswordResetEmail = null, signOut = null, getAuthFn = null;
     if (firebaseReady) {
       try {
         const appMod = await import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js");
@@ -369,6 +442,7 @@
         getDocs = fsMod.getDocs;
         getDoc = fsMod.getDoc;
         setDoc = fsMod.setDoc;
+        deleteDoc = fsMod.deleteDoc;
         doc = fsMod.doc;
         serverTimestamp = fsMod.serverTimestamp;
         signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
@@ -381,7 +455,22 @@
       } catch (err) { console.warn(err); }
     }
 
-    const current = { user: null, auditType: null, responses: {}, assets: [], photos: [] };
+    const current = { user: null, auditType: null, responses: {}, assets: [], photos: [], pointPhotos: {}, managerDocs: {}, managerAssets: [] };
+    const seededMasters = {
+      train: [
+        { trainNo: "12097-098", trainName: "Agartala Agplkgbp Janshtabdi", trainType: "TSV", yardName: "AGARTALA", businessHead: "KUNDAN JHA", businessHeadMobile: "9958185005", trainManager: "RATAN KUMAR", trainManagerNumber: "8521856685", racks: "1", clusterNo: "NFR/CLT/A-4", noOfRakes: "R1", rackManagerName: "SANDEEP JAISWAL", contactNo: "6393959470" },
+        { trainNo: "14619-620", trainName: "Tripura Sundari Exp", trainType: "WCB", yardName: "AGARTALA", businessHead: "KUNDAN JHA", businessHeadMobile: "9958185005", trainManager: "RATAN KUMAR", trainManagerNumber: "8521856685", racks: "1", clusterNo: "NR/CLT/A-5", noOfRakes: "R1", rackManagerName: "PREM SINGH", contactNo: "9296327584" },
+        { trainNo: "12503-504", trainName: "Agartla smvt humsafar exp", trainType: "WCB", yardName: "AGARTALA", businessHead: "KUNDAN JHA", businessHeadMobile: "9958185005", trainManager: "RATAN KUMAR", trainManagerNumber: "8521856685", racks: "2", clusterNo: "NFR/CLT-B-5", noOfRakes: "R1", rackManagerName: "MUKESH RAI", contactNo: "9546744743" },
+        { trainNo: "18237-238", trainName: "Chattisgarh Exp", trainType: "WCB", yardName: "AMRITSAR", businessHead: "RAHUL AGRAWAL", businessHeadMobile: "7636068246", trainManager: "DEEPU SINGH", trainManagerNumber: "9926511285", racks: "5", clusterNo: "SECR/CLT-B-4", noOfRakes: "R1", rackManagerName: "RAGHVENDRA", contactNo: "7440754228" },
+        { trainNo: "19325-326", trainName: "Indore Express", trainType: "WCB", yardName: "AMRITSAR", businessHead: "RAHUL AGRAWAL", businessHeadMobile: "7636068246", trainManager: "DEEPU SINGH", trainManagerNumber: "9926511285", racks: "1", clusterNo: "WR/CLT/A-1", noOfRakes: "R1", rackManagerName: "PUSHPENDRA", contactNo: "7601061519" }
+      ],
+      asset: [
+        { trainName: "Gitanjali Exp", assetName: "Balti", qty: 4 }, { trainName: "Gitanjali Exp", assetName: "Medium Drum 150 LT", qty: 5 }, { trainName: "Gitanjali Exp", assetName: "Big Drum 200 LT", qty: 2 }, { trainName: "Gitanjali Exp", assetName: "Nasta Contaner", qty: 4 }, { trainName: "Gitanjali Exp", assetName: "Tea / Coffee Banta", qty: 4 }, { trainName: "Gitanjali Exp", assetName: "POS Mechine", qty: 1 }, { trainName: "Gitanjali Exp", assetName: "Weight Mechine", qty: 1 },
+        { trainName: "Ahamedabad Sf Express", assetName: "Balti", qty: 4 }, { trainName: "Ahamedabad Sf Express", assetName: "Medium Drum 150 LT", qty: 2 }, { trainName: "Ahamedabad Sf Express", assetName: "Big Drum 200 LT", qty: 1 }, { trainName: "Ahamedabad Sf Express", assetName: "Nasta Contaner", qty: 4 }, { trainName: "Ahamedabad Sf Express", assetName: "Tea / Coffee Banta", qty: 4 }, { trainName: "Ahamedabad Sf Express", assetName: "POS Mechine", qty: 1 }, { trainName: "Ahamedabad Sf Express", assetName: "Weight Mechine", qty: 1 }
+      ],
+      store: [],
+      base: []
+    };
     const fullPermissions = {
       train: { read: true, write: true },
       base: { read: true, write: true },
@@ -515,7 +604,8 @@
         ["ID Card","Staff Identification","Every person available in train must carry valid ID card","H",5],
         ["Complaint & Behaviour","Discussion With Team","Visiting manager discussed passenger complaints and staff behaviour improvement","M",5],
         ["Sales Increase Plan","Commercial Discussion","Visiting manager asked and recorded plan for sale increase","M",5],
-        ["Staff Attendance","Attendance Register","Staff attendance register available, updated and matched with physical staff","H",5]
+        ["Staff Attendance","Attendance Register","Staff attendance register available, updated and matched with physical staff","H",5],
+        ["Assets","Train Asset Availability","Asset list for selected train checked against physical available quantity","H",5]
       ]
     };
     const stationery = ["Rent Aggrement","FSSAI Certificate","ISO Certificate","Aggrement between IRCTC & Licence","GST Registration","Gas Bank Safety Certificate","Pest Contraol","Trolly Permission","LOC & LOA","Fire Fighting Trainning certificate","Staff PVC police verification Certificate","Trade Licence","Fire safety NOC","Pollution NOC","Approved Brand List","Weighting Machine collabortation certificate"];
@@ -533,6 +623,14 @@
     window.editUserAccount = editUserAccount;
     window.resetUserForm = resetUserForm;
     window.sendSelectedPasswordReset = sendSelectedPasswordReset;
+    window.downloadBulkUserSample = downloadBulkUserSample;
+    window.downloadMasterSample = downloadMasterSample;
+    window.downloadMyExcel = downloadMyExcel;
+    window.clearReportFilters = clearReportFilters;
+    window.viewMyAuditDetail = viewMyAuditDetail;
+    window.closeAuditDetail = closeAuditDetail;
+    window.closeSuccessModal = closeSuccessModal;
+    window.deleteAuditRecordsPrompt = deleteAuditRecordsPrompt;
     window.downloadData = downloadData;
     window.uploadData = uploadData;
     window.downloadCurrentHtml = downloadCurrentHtml;
@@ -545,6 +643,13 @@
     $("auditDate").valueAsDate = new Date();
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
     $("photoInput").onchange = handlePhotoInput;
+    $("masterSelect").onchange = applySelectedMaster;
+    $("trainMasterUpload").onchange = (event) => uploadMasterCsv(event, "train");
+    $("storeMasterUpload").onchange = (event) => uploadMasterCsv(event, "store");
+    $("baseMasterUpload").onchange = (event) => uploadMasterCsv(event, "base");
+    $("assetMasterUpload").onchange = (event) => uploadMasterCsv(event, "asset");
+    $("bulkUserUpload").onchange = handleBulkUserUpload;
+    seedMasters();
 
     async function login() {
       const id = $("loginId").value.trim();
@@ -594,6 +699,7 @@
       $("logoutBtn").classList.remove("hidden");
       $("superTab").classList.toggle("hidden", current.user.email !== "sandipnandi2000@gmail.com");
       document.querySelector('[data-tab="admin"]').classList.toggle("hidden", !canRead("admin") && current.user.role !== "super-admin");
+      $("mastersTab").classList.toggle("hidden", current.user.email === "demo" || (!canRead("admin") && current.user.role !== "super-admin"));
       $("auditorName").value = current.user.name || current.user.email;
       document.querySelectorAll(".audit-option").forEach(card => {
         const type = card.dataset.audit;
@@ -619,7 +725,7 @@
     }
 
     function showTab(tab) {
-      ["home","reports","admin","super"].forEach(t => {
+      ["home","reports","admin","masters","super"].forEach(t => {
         const el = $("tab-" + t);
         if (el) el.classList.toggle("hidden", t !== tab);
       });
@@ -627,6 +733,7 @@
       document.querySelectorAll("[data-tab]").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
       if (tab === "reports") renderReports();
       if (tab === "admin") renderUsers();
+      if (tab === "masters") renderMasterSummary();
     }
 
     function startAudit(type) {
@@ -638,15 +745,58 @@
       current.responses = {};
       current.assets = [];
       current.photos = [];
+      current.pointPhotos = {};
+      current.managerDocs = {};
+      current.managerAssets = [];
+      current.staffListPhoto = null;
       $("photoInput").value = "";
       renderPhotoPreview();
+      populateMasterSelect(type);
       $("tab-home").classList.add("hidden");
       $("auditForm").classList.remove("hidden");
       $("auditTitle").textContent = titleMap[type];
       renderRateCard();
       renderStationery();
-      addAssetRow();
+      renderAssetRowsForAudit();
       calculateScore();
+    }
+
+    function seedMasters() {
+      for (const key of ["train", "asset", "store", "base"]) {
+        if (!localStorage.getItem("rkMaster_" + key)) setLocal("rkMaster_" + key, seededMasters[key]);
+      }
+    }
+
+    function getMaster(type) {
+      return getLocal("rkMaster_" + type, seededMasters[type] || []);
+    }
+
+    function populateMasterSelect(type) {
+      const select = $("masterSelect");
+      const masterType = type === "train" || type === "managerVisit" ? "train" : type;
+      const rows = getMaster(masterType);
+      const label = masterType === "train" ? "trainName" : "name";
+      select.innerHTML = `<option value="">Manual entry / not listed</option>` + rows.map((r, i) => `<option value="${i}">${r[label] || r.trainName || r.name || ""}</option>`).join("");
+      $("masterDetail").value = "";
+    }
+
+    function applySelectedMaster() {
+      const type = current.auditType === "managerVisit" ? "train" : current.auditType;
+      const rows = getMaster(type);
+      const row = rows[Number($("masterSelect").value)];
+      if (!row) return;
+      if (type === "train") {
+        $("locationName").value = `${row.trainNo || ""} ${row.trainName || ""}`.trim();
+        $("managerName").value = row.trainManager || row.rackManagerName || "";
+        $("contactNumber").value = row.trainManagerNumber || row.contactNo || "";
+        $("masterDetail").value = `Type: ${row.trainType || ""}; Yard: ${row.yardName || ""}; Rack: ${row.racks || ""}; Cluster: ${row.clusterNo || ""}; Rack Manager: ${row.rackManagerName || ""}`;
+        renderAssetRowsForAudit();
+      } else {
+        $("locationName").value = row.name || "";
+        $("managerName").value = row.managerName || "";
+        $("contactNumber").value = row.contactNo || "";
+        $("masterDetail").value = `Code: ${row.code || ""}; City: ${row.city || ""}; Zone: ${row.zone || ""}`;
+      }
     }
 
     function renderRateCard() {
@@ -661,7 +811,10 @@
           ${cat !== lastCat ? `<div class="pill">${cat}</div>` : ""}
           <div class="point-head">
             <h3>${index + 1}. ${sub ? sub + " - " : ""}${point}</h3>
-            <span class="pill">${criticality} / ${weight} pts</span>
+            <div>
+              <span class="pill">${criticality} / ${weight} pts</span>
+              <div class="point-score" id="pointScore${index}">0/5</div>
+            </div>
           </div>
           <div class="radio-row">
             <label><input type="radio" name="p${index}" value="yes">Maintained</label>
@@ -669,17 +822,48 @@
             <label><input type="radio" name="p${index}" value="no">Not Maintain</label>
             <label><input type="radio" name="p${index}" value="na">N/A</label>
           </div>
-          <textarea placeholder="Remarks for this point" data-remark="${index}"></textarea>`;
+          <textarea placeholder="Remarks for this point" data-remark="${index}"></textarea>
+          <div id="pointEvidence${index}" class="evidence-box hidden">
+            <label>Photo proof for this non-full score</label>
+            <input type="file" accept="image/*" capture="environment" data-point-photo="${index}">
+            <div id="pointPhotoPreview${index}" class="photo-grid"></div>
+          </div>`;
         holder.appendChild(box);
-        box.querySelectorAll("input").forEach(inp => inp.onchange = () => { current.responses[index] = inp.value; calculateScore(); });
+        box.querySelectorAll(`input[name="p${index}"]`).forEach(inp => inp.onchange = () => { current.responses[index] = inp.value; calculateScore(); });
+        box.querySelector(`[data-point-photo="${index}"]`).onchange = (event) => handlePointPhotoInput(event, index);
         lastCat = cat;
       });
+      if (current.auditType === "managerVisit") renderManagerVisitExtra();
+    }
+
+    function renderManagerVisitExtra() {
+      const holder = $("rateCard");
+      const docs = ["FSSAI", "LOA", "LOC", "Aadhaar", "PVC", "Medical"];
+      const box = document.createElement("div");
+      box.className = "point";
+      box.innerHTML = `
+        <div class="pill">Manager Visit Detail</div>
+        <div class="grid three">
+          <div><label>Approved Card Pass Number</label><input id="approvedCardPass" type="number" min="0" oninput="calculateScore()"></div>
+          <div><label>Actual Available Number</label><input id="actualCardPass" type="number" min="0" oninput="calculateScore()"></div>
+          <div><label>Physically Available Staff List Photo</label><input id="staffListPhoto" type="file" accept="image/*" capture="environment"></div>
+        </div>
+        <h3 style="margin-top:12px">Mandatory Documents</h3>
+        <div class="table-scroll"><table><tr><th>Document</th><th>Status</th></tr>${docs.map(d => `<tr><td>${d}</td><td><select data-manager-doc="${d}" onchange="calculateScore()"><option>Available</option><option>Not Available</option><option>Not Applicable</option></select></td></tr>`).join("")}</table></div>
+      `;
+      holder.appendChild(box);
+      $("staffListPhoto").onchange = async (event) => {
+        const file = event.target.files?.[0];
+        if (file) current.staffListPhoto = { name: file.name, dataUrl: await compressImage(file, 900, 0.68) };
+      };
     }
 
     function renderStationery() {
       const holder = $("stationeryRows");
       holder.innerHTML = "";
-      stationery.forEach((name, i) => {
+      const managerSkip = new Set(["Rent Aggrement","ISO Certificate","GST Registration","Trolly Permission","Trade Licence","Pollution NOC","Approved Brand List"]);
+      const list = current.auditType === "managerVisit" ? stationery.filter(x => !managerSkip.has(x)) : stationery;
+      list.forEach((name, i) => {
         const row = document.createElement("div");
         row.className = "grid two";
         row.innerHTML = `
@@ -704,6 +888,36 @@
       $("assetRows").appendChild(row);
     }
 
+    function renderAssetRowsForAudit() {
+      $("assetRows").innerHTML = "";
+      current.assets = [];
+      if (current.auditType === "managerVisit" || current.auditType === "train") {
+        const trainLabel = $("locationName").value.toLowerCase();
+        const selected = getMaster("train")[Number($("masterSelect").value)] || {};
+        const trainName = (selected.trainName || trainLabel).toLowerCase();
+        const masterAssets = getMaster("asset").filter(a => String(a.trainName || "").toLowerCase() === trainName);
+        if (masterAssets.length) {
+          masterAssets.forEach(a => addAssetMasterRow(a));
+          return;
+        }
+      }
+      addAssetRow();
+    }
+
+    function addAssetMasterRow(asset) {
+      const index = current.assets.length;
+      current.assets.push({ name: asset.assetName, systemQty: asset.qty });
+      const row = document.createElement("div");
+      row.className = "grid three";
+      row.innerHTML = `
+        <div><label>Asset Name</label><input data-asset="${index}" data-field="name" value="${asset.assetName || ""}" readonly></div>
+        <div><label>System Qty</label><input type="number" data-asset="${index}" data-field="systemQty" value="${asset.qty || 0}" readonly></div>
+        <div><label>Physical Qty</label><input type="number" data-asset="${index}" data-field="physicalQty" oninput="calculateScore()"></div>
+        <div><label>Score</label><input data-asset-score="${index}" readonly></div>
+        <div><label>Remarks</label><input data-asset="${index}" data-field="remarks"></div>`;
+      $("assetRows").appendChild(row);
+    }
+
     async function handlePhotoInput(event) {
       const files = Array.from(event.target.files || []);
       for (const file of files) {
@@ -717,6 +931,21 @@
       }
       event.target.value = "";
       renderPhotoPreview();
+    }
+
+    async function handlePointPhotoInput(event, index) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      current.pointPhotos[index] = current.pointPhotos[index] || [];
+      current.pointPhotos[index].push({ name: file.name, dataUrl: await compressImage(file, 900, 0.68), addedAt: new Date().toISOString() });
+      renderPointPhotoPreview(index);
+    }
+
+    function renderPointPhotoPreview(index) {
+      const photos = current.pointPhotos[index] || [];
+      const holder = $("pointPhotoPreview" + index);
+      if (!holder) return;
+      holder.innerHTML = photos.map(p => `<div class="photo-thumb"><img src="${p.dataUrl}" alt="Point evidence"></div>`).join("");
     }
 
     function compressImage(file, maxSize, quality) {
@@ -758,15 +987,75 @@
       const items = auditItems[current.auditType] || [];
       let score = 0, max = 0;
       items.forEach((item, idx) => {
+        let pointScore = responseScore(current.responses[idx]);
+        if (current.auditType === "managerVisit" && idx === 0) pointScore = cardPassScore();
+        if (current.auditType === "managerVisit" && idx === 1) pointScore = managerDocScore();
+        if (current.auditType === "managerVisit" && idx === 7) pointScore = managerAssetScore();
         if (current.responses[idx] !== "na") max += 5;
-        if (current.responses[idx] === "yes") score += 5;
-        if (current.responses[idx] === "partial") score += 3;
+        score += pointScore;
+        const scoreEl = $("pointScore" + idx);
+        if (scoreEl) scoreEl.textContent = `${pointScore}/5`;
+        const evidenceEl = $("pointEvidence" + idx);
+        if (evidenceEl) evidenceEl.classList.toggle("hidden", pointScore >= 5 || current.responses[idx] === "na");
       });
       const pct = max ? Math.round((score / max) * 100) : 0;
       $("scoreNow").textContent = score;
       $("scoreMax").textContent = max;
       $("scorePct").textContent = pct + "%";
       return { score, max, pct };
+    }
+
+    function responseScore(value) {
+      if (value === "yes") return 5;
+      if (value === "partial") return 3;
+      return 0;
+    }
+
+    function cardPassScore() {
+      const approved = Number($("approvedCardPass")?.value || 0);
+      const actual = Number($("actualCardPass")?.value || 0);
+      if (!approved) return responseScore(current.responses[0]);
+      const ratio = actual / approved;
+      current.responses[0] = ratio >= 1 ? "yes" : ratio >= 0.9 ? "partial" : "no";
+      return ratio >= 1 ? 5 : ratio >= 0.9 ? 3 : 0;
+    }
+
+    function managerDocScore() {
+      const selects = Array.from(document.querySelectorAll("[data-manager-doc]"));
+      if (!selects.length) return responseScore(current.responses[1]);
+      const applicable = selects.filter(s => s.value !== "Not Applicable");
+      const available = applicable.filter(s => s.value === "Available").length;
+      current.managerDocs = Object.fromEntries(selects.map(s => [s.dataset.managerDoc, s.value]));
+      if (!applicable.length || available === applicable.length) { current.responses[1] = "yes"; return 5; }
+      if (available > 0) { current.responses[1] = "partial"; return 3; }
+      current.responses[1] = "no";
+      return 0;
+    }
+
+    function managerAssetScore() {
+      const rows = [];
+      document.querySelectorAll("[data-asset]").forEach(input => {
+        const idx = Number(input.dataset.asset);
+        rows[idx] = rows[idx] || {};
+        rows[idx][input.dataset.field] = input.value;
+      });
+      let total = 0, earned = 0;
+      rows.filter(Boolean).forEach((a, idx) => {
+        const planned = Number(a.systemQty || 0);
+        const actual = Number(a.physicalQty || 0);
+        let s = 5;
+        if (planned > 0) {
+          const ratio = actual / planned;
+          s = ratio >= 1 ? 5 : ratio >= 0.9 ? 3 : 0;
+        }
+        const scoreField = document.querySelector(`[data-asset-score="${idx}"]`);
+        if (scoreField) scoreField.value = s + "/5";
+        total += 5; earned += s;
+      });
+      if (!total) return responseScore(current.responses[7]);
+      const avg = earned / total * 5;
+      current.responses[7] = avg >= 5 ? "yes" : avg >= 3 ? "partial" : "no";
+      return Math.round(avg);
     }
 
     async function submitAudit() {
@@ -777,7 +1066,8 @@
       const totals = calculateScore();
       const itemRemarks = {};
       document.querySelectorAll("[data-remark]").forEach(el => itemRemarks[el.dataset.remark] = el.value);
-      const stationeryData = stationery.map((name, i) => ({
+      const stationeryNames = Array.from(document.querySelectorAll("[data-stationery]")).map((el, i) => el.closest(".grid")?.querySelector("label")?.textContent?.replace(/^\d+\.\s*/, "") || stationery[i]);
+      const stationeryData = stationeryNames.map((name, i) => ({
         name,
         status: document.querySelector(`[data-stationery="${i}"]`).value,
         remarks: document.querySelector(`[data-stationery-remark="${i}"]`).value
@@ -799,7 +1089,11 @@
         manager: $("managerName").value,
         contact: $("contactNumber").value,
         docRef: $("docRef").value,
+        masterDetail: $("masterDetail").value,
         photos: current.photos,
+        pointPhotos: current.pointPhotos,
+        staffListPhoto: current.staffListPhoto || null,
+        managerDocs: current.managerDocs || {},
         totals,
         responses: current.responses,
         itemRemarks,
@@ -813,13 +1107,23 @@
         createdAt: new Date().toISOString()
       };
       const reports = getLocal("rkAuditReports", []);
-      reports.push(report);
+      const duplicateIndex = reports.findIndex(r => r.type === report.type && r.date === report.date && r.location === report.location && r.auditorId === report.auditorId);
+      if (duplicateIndex >= 0) {
+        const ok = confirm("An audit already exists for same date, same location/train and same auditor. Click OK to overwrite previous audit, or Cancel to stop.");
+        if (!ok) return;
+        report.id = reports[duplicateIndex].id || report.id;
+        report.overwrittenAt = new Date().toISOString();
+        reports[duplicateIndex] = report;
+      } else {
+        reports.push(report);
+      }
       setLocal("rkAuditReports", reports);
       if (db) {
-        try { await addDoc(collection(db, "auditReports"), { ...report, firebaseCreatedAt: serverTimestamp() }); }
+        try { await setDoc(doc(db, "auditReports", report.id), { ...report, firebaseCreatedAt: serverTimestamp() }, { merge: true }); }
         catch (err) { console.warn(err); $("submitMsg").textContent = "Saved locally. Firebase save failed: " + err.message; return; }
       }
       $("submitMsg").textContent = "Audit submitted successfully. It is available in My Reports and Central Dashboard.";
+      $("successModal").classList.remove("hidden");
       renderReports();
     }
 
@@ -828,17 +1132,51 @@
       if (db) {
         try {
           const snap = await getDocs(collection(db, "auditReports"));
-          reports = snap.docs.map(d => d.data());
+          reports = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           setLocal("rkAuditReports", reports);
         } catch (err) { console.warn(err); }
       }
+      const from = $("myFromDate")?.value || "";
+      const to = $("myToDate")?.value || "";
+      const typeFilter = $("myReportType")?.value || "";
       const mine = reports.filter(r => {
         const readable = canRead(r.type);
         const ownReport = r.auditorId === current.user.email || r.auditor === current.user.name;
-        return current.user.role === "super-admin" || (readable && ownReport) || (readable && canRead("dashboard"));
+        const accessOk = current.user.role === "super-admin" || (readable && ownReport) || (readable && canRead("dashboard"));
+        const dateOk = (!from || String(r.date || "") >= from) && (!to || String(r.date || "") <= to);
+        const typeOk = !typeFilter || r.type === typeFilter;
+        return accessOk && dateOk && typeOk;
       });
-      $("myReports").innerHTML = `<tr><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Score</th><th>Status</th></tr>` +
-        mine.map(r => `<tr><td>${r.id}</td><td>${r.date || ""}</td><td>${r.typeLabel}</td><td>${r.location || ""}</td><td>${r.totals.score}/${r.totals.max} (${r.totals.pct}%)</td><td>${r.totals.pct >= 60 ? "Pass" : "Fail"}</td></tr>`).join("");
+      window.lastMyReports = mine;
+      const avg = mine.length ? Math.round(mine.reduce((s,r)=>s+(r.totals?.pct||0),0)/mine.length) : 0;
+      $("myAuditCount").textContent = mine.length;
+      $("myAuditAvg").textContent = avg + "%";
+      $("myAuditTypes").textContent = new Set(mine.map(r => r.type)).size;
+      $("myReports").innerHTML = `<tr><th>View</th><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Score</th><th>Status</th></tr>` +
+        mine.map(r => `<tr><td><button class="ghost" onclick="viewMyAuditDetail('${r.id}')" style="width:auto">View</button></td><td>${r.id}</td><td>${r.date || ""}</td><td>${r.typeLabel}</td><td>${r.location || ""}</td><td>${r.totals.score}/${r.totals.max} (${r.totals.pct}%)</td><td>${r.totals.pct >= 60 ? "Pass" : "Fail"}</td></tr>`).join("");
+    }
+
+    function clearReportFilters() {
+      $("myFromDate").value = "";
+      $("myToDate").value = "";
+      $("myReportType").value = "";
+      renderReports();
+    }
+
+    function viewMyAuditDetail(id) {
+      const report = (window.lastMyReports || getLocal("rkAuditReports", [])).find(r => String(r.id) === String(id));
+      if (!report) return;
+      $("auditDetailTitle").textContent = `${report.typeLabel || report.type} - ${report.location || ""}`;
+      const responses = Object.entries(report.responses || {}).map(([idx,val]) => `<tr><td>${Number(idx)+1}</td><td>${statusLabel(val)}</td><td>${report.itemRemarks?.[idx] || ""}</td></tr>`).join("");
+      const photos = [...(report.photos || []), ...Object.values(report.pointPhotos || {}).flat(), ...(report.staffListPhoto ? [report.staffListPhoto] : [])].map(p => `<img src="${p.dataUrl}" style="width:120px;height:95px;object-fit:cover;border:1px solid #ddd;border-radius:8px;margin:5px">`).join("");
+      $("auditDetailBody").innerHTML = `<div class="scorebox"><div><span class="small">Date</span><b>${report.date || ""}</b></div><div><span class="small">Score</span><b>${report.totals?.score || 0}/${report.totals?.max || 0}</b></div><div><span class="small">Compliance</span><b>${report.totals?.pct || 0}%</b></div></div><div class="table-scroll"><table><tr><th>Point</th><th>Status</th><th>Remarks</th></tr>${responses}</table></div><h3>Observation</h3><p>${report.observations?.major || ""}</p><h3>Photos</h3><div>${photos || "No photos attached."}</div>`;
+      $("auditDetailPanel").classList.remove("hidden");
+    }
+
+    function closeAuditDetail() { $("auditDetailPanel").classList.add("hidden"); }
+
+    function statusLabel(value) {
+      return value === "yes" ? "Maintained / 5" : value === "partial" ? "Needs Improvement / 3" : value === "no" ? "Not Maintain / 0" : value === "na" ? "N/A" : "Not marked";
     }
 
     function collectPermissions() {
@@ -912,7 +1250,7 @@
       alert("Password reset email sent to " + email + ".");
     }
 
-    async function saveUserAccount() {
+    async function saveUserAccount(silent = false) {
       if (!canWrite("admin")) {
         alert("You do not have admin write access.");
         return;
@@ -941,7 +1279,7 @@
         if (idx >= 0) users[idx] = { ...users[idx], ...userRecord };
         setLocal("rkUsers", users);
         renderUsers();
-        alert("User access updated successfully. Ask the user to logout and login again.");
+        if (!silent) alert("User access updated successfully. Ask the user to logout and login again.");
         resetUserForm();
         return;
       }
@@ -968,7 +1306,7 @@
       users.push(userRecord);
       setLocal("rkUsers", users);
       renderUsers();
-      alert("User created successfully. This ID can now login and save data according to permissions.");
+      if (!silent) alert("User created successfully. This ID can now login and save data according to permissions.");
       resetUserForm();
     }
 
@@ -985,6 +1323,129 @@
         const access = Object.entries(u.permissions || {}).filter(([,p]) => p.read || p.write).map(([k,p]) => `${k}: ${p.read ? "R" : ""}${p.write ? "W" : ""}`).join(", ");
         return `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td>${access}</td><td><button class="ghost" onclick="editUserAccount('${u.uid}')" style="width:auto">Edit</button></td></tr>`;
       }).join("");
+    }
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [], cell = "", quote = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i], next = text[i + 1];
+        if (ch === '"' && quote && next === '"') { cell += '"'; i++; }
+        else if (ch === '"') quote = !quote;
+        else if (ch === "," && !quote) { row.push(cell); cell = ""; }
+        else if ((ch === "\n" || ch === "\r") && !quote) {
+          if (cell || row.length) { row.push(cell); rows.push(row); row = []; cell = ""; }
+          if (ch === "\r" && next === "\n") i++;
+        } else cell += ch;
+      }
+      if (cell || row.length) { row.push(cell); rows.push(row); }
+      return rows;
+    }
+
+    function toCsv(rows) {
+      return rows.map(r => r.map(v => `"${String(v ?? "").replaceAll('"','""')}"`).join(",")).join("\n");
+    }
+
+    function downloadBulkUserSample() {
+      const rows = [["name","email","password","role","train_read","train_write","base_read","base_write","store_read","store_write","managerVisit_read","managerVisit_write","dashboard_read","dashboard_write","admin_read","admin_write"],["Munna","munna@gmail.com","Temp@12345","auditor","no","no","no","no","no","no","yes","yes","no","no","no","no"]];
+      downloadBlob("bulk-user-sample.csv", toCsv(rows), "text/csv");
+    }
+
+    async function handleBulkUserUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const rows = parseCsv(await file.text());
+      const headers = rows.shift().map(h => h.trim());
+      let created = 0;
+      for (const row of rows) {
+        const rec = Object.fromEntries(headers.map((h,i)=>[h,row[i] || ""]));
+        $("newUserName").value = rec.name || "";
+        $("newUserEmail").value = rec.email || "";
+        $("newUserPassword").value = rec.password || "";
+        $("newUserRole").value = rec.role || "auditor";
+        setPermissionForm({
+          train: { read: rec.train_read === "yes", write: rec.train_write === "yes" },
+          base: { read: rec.base_read === "yes", write: rec.base_write === "yes" },
+          store: { read: rec.store_read === "yes", write: rec.store_write === "yes" },
+          managerVisit: { read: rec.managerVisit_read === "yes", write: rec.managerVisit_write === "yes" },
+          dashboard: { read: rec.dashboard_read === "yes", write: rec.dashboard_write === "yes" },
+          admin: { read: rec.admin_read === "yes", write: rec.admin_write === "yes" }
+        });
+        await saveUserAccount(true);
+        created++;
+      }
+      $("bulkUserStatus").value = `${created} users processed`;
+      event.target.value = "";
+    }
+
+    async function uploadMasterCsv(event, type) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const rows = parseCsv(await file.text());
+      const headers = rows.shift().map(h => h.trim());
+      let data = [];
+      if (type === "asset") {
+        data = rows.flatMap(row => {
+          const trainName = row[0] || row[1] || "";
+          return headers.slice(1).map((h, i) => ({ trainName, assetName: h, qty: Number(row[i + 1] || 0) })).filter(x => x.assetName && x.qty);
+        });
+      } else {
+        data = rows.map(row => Object.fromEntries(headers.map((h,i)=>[normalizeHeader(h), row[i] || ""])));
+      }
+      setLocal("rkMaster_" + type, data);
+      if (db && setDoc && doc) await setDoc(doc(db, "masters", type), { data, updatedAt: new Date().toISOString() });
+      renderMasterSummary();
+      alert("Master uploaded: " + type);
+    }
+
+    function normalizeHeader(h) {
+      const map = { "TRAIN NO":"trainNo", "TRAIN NAME":"trainName", "TRAIN TYPE":"trainType", "YARD NAME":"yardName", "Yard Manager ( Train Manager )":"trainManager", "TRAIN MANAGER NUMBER":"trainManagerNumber", "RACKS":"racks", "RACK MANAGER NAME":"rackManagerName", "CONTACT NO":"contactNo", "NAME":"name", "MANAGER NAME":"managerName", "CONTACT NUMBER":"contactNo" };
+      return map[h] || h.toLowerCase().replace(/[^a-z0-9]+(.)/g, (_,c)=>c.toUpperCase());
+    }
+
+    function downloadMasterSample(type) {
+      const rows = type === "asset"
+        ? [["trainName","Balti","Medium Drum 150 LT","Big Drum 200 LT","Nasta Contaner","Tea / Coffee Banta","POS Mechine","Weight Mechine"],["Gitanjali Exp","4","5","2","4","4","1","1"]]
+        : type === "train"
+          ? [["TRAIN NO","TRAIN NAME","TRAIN TYPE","YARD NAME","Yard Manager ( Train Manager )","TRAIN MANAGER NUMBER","RACKS","RACK MANAGER NAME","CONTACT NO"],["12097-098","Agartala Agplkgbp Janshtabdi","TSV","AGARTALA","RATAN KUMAR","8521856685","1","SANDEEP JAISWAL","6393959470"]]
+          : [["name","code","city","zone","managerName","contactNo"],["Kolkata Store","ST-001","Kolkata","East","Manager Name","9000000000"]];
+      downloadBlob(`${type}-master-sample.csv`, toCsv(rows), "text/csv");
+    }
+
+    function renderMasterSummary() {
+      $("masterSummaryTable").innerHTML = `<tr><th>Master</th><th>Records</th></tr>` + ["train","store","base","asset"].map(k => `<tr><td>${k}</td><td>${getMaster(k).length}</td></tr>`).join("");
+    }
+
+    function downloadMyExcel() {
+      const reports = window.lastMyReports || [];
+      const summary = [["Audit ID","Date","Type","Location","Auditor","Score","Max","Compliance","Status"]];
+      const detail = [["Audit ID","Point No","Status","Remarks","Major Observation"]];
+      reports.forEach(r => {
+        summary.push([r.id,r.date,r.typeLabel||r.type,r.location,r.auditor,r.totals?.score,r.totals?.max,r.totals?.pct,(r.totals?.pct||0)>=60?"Pass":"Fail"]);
+        Object.entries(r.responses || {}).forEach(([idx,val]) => detail.push([r.id,Number(idx)+1,statusLabel(val),r.itemRemarks?.[idx]||"",r.observations?.major||""]));
+      });
+      downloadBlob("my-audit-report.xls", buildExcelXml({ Summary: summary, Detail: detail }), "application/vnd.ms-excel");
+    }
+
+    function buildExcelXml(sheets) {
+      const sheetXml = Object.entries(sheets).map(([name, rows]) => `<Worksheet ss:Name="${name}"><Table>${rows.map(r => `<Row>${r.map(v => `<Cell><Data ss:Type="String">${String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;")}</Data></Cell>`).join("")}</Row>`).join("")}</Table></Worksheet>`).join("");
+      return `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${sheetXml}</Workbook>`;
+    }
+
+    function closeSuccessModal() { $("successModal").classList.add("hidden"); showTab("reports"); }
+
+    async function deleteAuditRecordsPrompt() {
+      const email = prompt("Big warning: this will delete all audit records from this app and Firebase. Enter Super Admin email to continue.");
+      if (email !== "sandipnandi2000@gmail.com") return;
+      const pass = prompt("Enter Super Admin password again.");
+      if (pass !== "Sanju@1234") return;
+      if (!confirm("Final confirmation: delete ALL four audit records and start fresh?")) return;
+      localStorage.removeItem("rkAuditReports");
+      if (db && getDocs && deleteDoc && doc) {
+        const snap = await getDocs(collection(db, "auditReports"));
+        for (const d of snap.docs) await deleteDoc(doc(db, "auditReports", d.id));
+      }
+      alert("All audit records deleted.");
     }
 
     function downloadBlob(name, content, type) {

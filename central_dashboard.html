@@ -31,7 +31,7 @@
     .hidden{display:none!important}.kpi b{display:block;font-size:28px}.kpi{border-top:5px solid var(--rail-blue)}
     table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#eef5fb;color:var(--rail-blue)}
     .table-scroll{overflow:auto;border:1px solid var(--line);border-radius:8px;max-height:440px}
-    canvas{width:100%;height:260px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    canvas{width:100%;height:320px;border:1px solid var(--line);border-radius:8px;background:#fff}
     .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:10px}
     .photo-grid img{width:100%;height:110px;object-fit:cover;border:1px solid var(--line);border-radius:8px}
     .detail-panel{position:fixed;inset:0;background:rgba(17,24,39,.72);z-index:20;display:grid;place-items:center;padding:18px}
@@ -48,9 +48,9 @@
   <main>
     <section id="loginScreen" class="card" style="max-width:440px;margin:auto">
       <h2>Dashboard Login</h2>
-      <p class="small">Use demo/demo for testing. Super admin: sandipnandi2000@gmail.com.</p>
-      <label>User ID or Email</label><input id="loginId" value="demo">
-      <label>Password</label><input id="loginPassword" type="password" value="demo">
+      <p class="small">Demo login is for viewing only. For actual dashboard work, use your assigned Firebase user ID and password.</p>
+      <label>User ID or Email</label><input id="loginId" placeholder="Enter assigned user ID or demo">
+      <label>Password</label><input id="loginPassword" type="password" placeholder="Enter password">
       <button id="loginBtn" style="margin-top:12px">Login</button>
       <p id="loginMsg" class="small"></p>
     </section>
@@ -63,6 +63,14 @@
         <button data-tab="data">Data</button>
       </div>
       <section id="tab-overview">
+        <div class="card" style="margin-bottom:14px">
+          <div class="grid four">
+            <div><label>From Date</label><input id="globalFrom" type="date"></div>
+            <div><label>To Date</label><input id="globalTo" type="date"></div>
+            <div><label>Audit Type</label><select id="globalType"><option value="">All</option><option value="train">Train</option><option value="base">Base Kitchen</option><option value="store">Store</option><option value="managerVisit">Manager Train Visit</option></select></div>
+            <div><label>Location / Manager</label><input id="globalSearch" placeholder="Train, store, base, manager"></div>
+          </div>
+        </div>
         <div class="grid four">
           <div class="card kpi"><span class="small">Total Audits</span><b id="kTotal">0</b></div>
           <div class="card kpi"><span class="small">Average Score</span><b id="kAvg">0%</b></div>
@@ -77,18 +85,24 @@
           <div class="card"><h2>Auditor Productivity</h2><canvas id="auditorChart"></canvas></div>
           <div class="card"><h2>Recent Failed / Risk Audits</h2><div class="table-scroll"><table id="riskTable"></table></div></div>
         </div>
+        <div class="grid two" style="margin-top:14px">
+          <div class="card"><h2>Day Wise Audit Volume</h2><canvas id="dayTypeChart"></canvas></div>
+          <div class="card"><h2>Manager / Location Risk</h2><canvas id="locationRiskChart"></canvas></div>
+        </div>
       </section>
 
       <section id="tab-reports" class="hidden card">
         <h2>Completed Audit Reports</h2>
         <div class="grid four">
           <div><label>Audit Type</label><select id="filterType"><option value="">All</option><option value="train">Train</option><option value="base">Base Kitchen</option><option value="store">Store</option><option value="managerVisit">Manager Train Visit</option></select></div>
-          <div><label>Auditor</label><input id="filterAuditor" placeholder="Name or ID"></div>
+          <div><label>Auditor</label><select id="filterAuditor"><option value="">All Auditors</option></select></div>
           <div><label>From Date</label><input id="filterFrom" type="date"></div>
           <div><label>To Date</label><input id="filterTo" type="date"></div>
+          <div><label>Location / Train / Store / Base</label><input id="filterLocation" placeholder="Search location"></div>
+          <div><label>Manager Name</label><input id="filterManager" placeholder="Search manager"></div>
         </div>
         <button onclick="renderAll()" style="margin:12px 0;width:auto">Apply Filter</button>
-        <button class="secondary" onclick="exportCsv()" style="margin:12px 0;width:auto">Download CSV</button>
+        <button class="secondary" onclick="exportCsv()" style="margin:12px 0;width:auto">Download Excel</button>
         <div class="table-scroll"><table id="reportTable"></table></div>
       </section>
 
@@ -96,6 +110,10 @@
         <div class="grid two">
           <div class="card"><h2>Category Weakness Analysis</h2><canvas id="categoryChart"></canvas></div>
           <div class="card"><h2>Audit Trend</h2><canvas id="trendChart"></canvas></div>
+        </div>
+        <div class="grid two" style="margin-top:14px">
+          <div class="card"><h2>Auditor Score Quality</h2><canvas id="auditorScoreChart"></canvas></div>
+          <div class="card"><h2>Fail / Needs Improvement Heatmap</h2><div class="table-scroll"><table id="heatTable"></table></div></div>
         </div>
         <div class="card" style="margin-top:14px">
           <h2>Deep Finding Table</h2>
@@ -162,13 +180,14 @@
     const getLocal = (key, fallback=[]) => JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
     const setLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
     let reports = [];
+    let activeType = "";
     let currentUser = null;
     window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig; window.viewAuditDetail = viewAuditDetail; window.closeAuditDetail = closeAuditDetail;
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
     $("loginBtn").onclick = login;
     $("logoutBtn").onclick = async () => { if (auth && signOut) await signOut(auth).catch(console.warn); location.reload(); };
     document.querySelectorAll("[data-tab]").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
-    ["filterType","filterAuditor","filterFrom","filterTo"].forEach(id => $(id).oninput = renderAll);
+    ["filterType","filterAuditor","filterFrom","filterTo","filterLocation","filterManager","globalFrom","globalTo","globalType","globalSearch"].forEach(id => $(id).oninput = renderAll);
 
     async function login() {
       const id = $("loginId").value.trim(), pass = $("loginPassword").value;
@@ -213,7 +232,7 @@
     async function loadReports() {
       reports = getLocal("rkAuditReports", []);
       if (db) {
-        try { const snap = await getDocs(collection(db, "auditReports")); reports = snap.docs.map(d => d.data()); setLocal("rkAuditReports", reports); $("dataMsg").textContent = "Loaded from Firebase."; }
+        try { const snap = await getDocs(collection(db, "auditReports")); reports = snap.docs.map(d => ({ id: d.id, ...d.data() })); setLocal("rkAuditReports", reports); $("dataMsg").textContent = "Loaded from Firebase."; }
         catch (err) { $("dataMsg").textContent = "Firebase load failed, showing local data: " + err.message; }
       }
       if (!reports.length) {
@@ -222,17 +241,38 @@
       }
       renderAll();
     }
+    function syncReportFiltersFromGlobal() {
+      if ($("globalFrom").value && !$("filterFrom").value) $("filterFrom").value = $("globalFrom").value;
+      if ($("globalTo").value && !$("filterTo").value) $("filterTo").value = $("globalTo").value;
+      if (($("globalType").value || activeType) && !$("filterType").value) $("filterType").value = $("globalType").value || activeType;
+    }
+    function populateAuditorDropdown(data) {
+      const current = $("filterAuditor").value;
+      const auditors = [...new Set(data.map(r => r.auditor || r.auditorId || "Unknown"))].sort();
+      $("filterAuditor").innerHTML = `<option value="">All Auditors</option>` + auditors.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join("");
+      $("filterAuditor").value = auditors.includes(current) ? current : "";
+    }
     function filtered() {
+      const globalType = $("globalType").value || activeType;
+      const globalSearch = $("globalSearch").value.toLowerCase();
       return reports.filter(r => {
-        const typeOk = !$("filterType").value || r.type === $("filterType").value;
+        const typeOk = !($("filterType").value || globalType) || r.type === ($("filterType").value || globalType);
         const aud = $("filterAuditor").value.toLowerCase();
         const audOk = !aud || String(r.auditor || "").toLowerCase().includes(aud) || String(r.auditorId || "").toLowerCase().includes(aud);
-        const fromOk = !$("filterFrom").value || String(r.date || "") >= $("filterFrom").value;
-        const toOk = !$("filterTo").value || String(r.date || "") <= $("filterTo").value;
-        return typeOk && audOk && fromOk && toOk;
+        const fromVal = $("filterFrom").value || $("globalFrom").value;
+        const toVal = $("filterTo").value || $("globalTo").value;
+        const fromOk = !fromVal || String(r.date || "") >= fromVal;
+        const toOk = !toVal || String(r.date || "") <= toVal;
+        const loc = $("filterLocation").value.toLowerCase();
+        const mgr = $("filterManager").value.toLowerCase();
+        const locOk = !loc || String(r.location || "").toLowerCase().includes(loc);
+        const mgrOk = !mgr || String(r.manager || "").toLowerCase().includes(mgr);
+        const globalOk = !globalSearch || [r.location, r.manager, r.auditor, r.typeLabel].some(v => String(v || "").toLowerCase().includes(globalSearch));
+        return typeOk && audOk && fromOk && toOk && locOk && mgrOk && globalOk;
       });
     }
     function renderAll() {
+      populateAuditorDropdown(reports.filter(r => !$("filterType").value || r.type === $("filterType").value));
       const data = filtered();
       const pass = data.filter(r => (r.totals?.pct || 0) >= 60).length;
       const fail = data.length - pass;
@@ -243,6 +283,10 @@
       barChart("scoreChart", scoreBands(data), ["#d8343a","#b76e00","#14804a","#123c69"]);
       barChart("auditorChart", countBy(data, r => r.auditor || "Unknown"), ["#123c69"]);
       barChart("categoryChart", weakCategories(data), ["#d8343a"]);
+      barChart("dayTypeChart", countBy(data, r => `${r.date || "No date"} ${r.typeLabel || r.type}`), ["#123c69","#d8343a","#14804a","#b76e00"]);
+      barChart("locationRiskChart", avgBy(data, r => r.location || "Unknown", r => 100 - (r.totals?.pct || 0)), ["#d8343a"]);
+      barChart("auditorScoreChart", avgBy(data, r => r.auditor || "Unknown", r => r.totals?.pct || 0), ["#14804a"]);
+      renderHeatTable(data);
       lineChart("trendChart", trend(data));
     }
     function renderTable(data) {
@@ -262,7 +306,8 @@
       const responseRows = Object.entries(report.responses || {}).map(([idx, val]) => `<tr><td>${Number(idx)+1}</td><td>${statusLabel(val)}</td><td>${escapeHtml(report.itemRemarks?.[idx] || "")}</td></tr>`).join("");
       const stationeryRows = (report.stationery || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.status)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
       const assetRows = (report.assets || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.code)}</td><td>${escapeHtml(x.category)}</td><td>${escapeHtml(x.systemQty)}</td><td>${escapeHtml(x.physicalQty)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
-      const photos = (report.photos || []).map((p, i) => `<a href="${p.dataUrl}" target="_blank"><img src="${p.dataUrl}" alt="Evidence ${i+1}"></a>`).join("");
+      const allPhotos = [...(report.photos || []), ...Object.values(report.pointPhotos || {}).flat(), ...(report.staffListPhoto ? [report.staffListPhoto] : [])];
+      const photos = allPhotos.map((p, i) => `<a href="${p.dataUrl}" target="_blank"><img src="${p.dataUrl}" alt="Evidence ${i+1}"></a>`).join("");
       $("detailBody").innerHTML = `
         <div class="grid four" style="margin-top:12px">
           <div class="card"><span class="small">Audit ID</span><b>${escapeHtml(report.id || "")}</b></div>
@@ -298,6 +343,11 @@
       $("findingTable").innerHTML = `<tr><th>Date</th><th>Audit</th><th>Location</th><th>Auditor</th><th>Finding</th><th>Remarks</th></tr>` + rows.map(x => `<tr>${x.map(v=>`<td>${v||""}</td>`).join("")}</tr>`).join("");
     }
     function countBy(data, fn) { const o={}; data.forEach(r => { const k=fn(r)||"Unknown"; o[k]=(o[k]||0)+1; }); return o; }
+    function avgBy(data, keyFn, valueFn) {
+      const grouped = {};
+      data.forEach(r => { const k = keyFn(r) || "Unknown"; grouped[k] = grouped[k] || []; grouped[k].push(Number(valueFn(r)) || 0); });
+      return Object.fromEntries(Object.entries(grouped).map(([k,v]) => [k, Math.round(v.reduce((a,b)=>a+b,0)/v.length)]).sort((a,b)=>b[1]-a[1]).slice(0,12));
+    }
     function scoreBands(data) {
       const o={"0-49":0,"50-59":0,"60-79":0,"80-100":0};
       data.forEach(r => { const p=r.totals?.pct||0; if(p<50)o["0-49"]++; else if(p<60)o["50-59"]++; else if(p<80)o["60-79"]++; else o["80-100"]++; });
@@ -305,8 +355,22 @@
     }
     function weakCategories(data) {
       const o={};
-      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => { if (val === "no") { const k=(r.typeLabel || r.type) + " point " + (Number(idx)+1); o[k]=(o[k]||0)+1; }}));
+      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => { if (val === "no" || val === "partial") { const k=(r.typeLabel || r.type) + " point " + (Number(idx)+1); o[k]=(o[k]||0)+1; }}));
       return Object.fromEntries(Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,12));
+    }
+    function renderHeatTable(data) {
+      const rows = [];
+      const grouped = {};
+      data.forEach(r => {
+        const key = `${r.typeLabel || r.type} | ${r.location || "Unknown"}`;
+        grouped[key] = grouped[key] || { total: 0, low: 0, avg: [] };
+        grouped[key].total++;
+        grouped[key].avg.push(r.totals?.pct || 0);
+        Object.values(r.responses || {}).forEach(v => { if (v === "no" || v === "partial") grouped[key].low++; });
+      });
+      Object.entries(grouped).forEach(([k,v]) => rows.push([k, v.total, v.low, Math.round(v.avg.reduce((a,b)=>a+b,0)/v.avg.length)]));
+      rows.sort((a,b) => b[2] - a[2]);
+      $("heatTable").innerHTML = `<tr><th>Audit / Location</th><th>Audits</th><th>Weak Points</th><th>Avg Score</th></tr>` + rows.slice(0,20).map(r => `<tr><td>${escapeHtml(r[0])}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}%</td></tr>`).join("");
     }
     function trend(data) {
       const o={}; data.forEach(r => { const d=r.date || String(r.createdAt || "").slice(0,10) || "No date"; if(!o[d])o[d]=[]; o[d].push(r.totals?.pct||0); });
@@ -314,9 +378,24 @@
     }
     function barChart(id, obj, colors) {
       const c=$(id), ctx=c.getContext("2d"), W=c.width=c.clientWidth*2, H=c.height=260*2; ctx.clearRect(0,0,W,H);
-      const entries=Object.entries(obj); const max=Math.max(1,...entries.map(e=>e[1])); const pad=70, gap=14, bw=Math.max(24,(W-pad*2)/Math.max(1,entries.length)-gap);
+      const entries=Object.entries(obj).slice(0,14); const max=Math.max(1,...entries.map(e=>e[1])); const pad=90, gap=18, bw=Math.max(30,(W-pad*2)/Math.max(1,entries.length)-gap);
       ctx.font="24px Arial"; ctx.fillStyle="#17202a";
-      entries.forEach(([label,val],i)=>{ const x=pad+i*(bw+gap), h=(H-120)*(val/max), y=H-60-h; ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(x,y,bw,h); ctx.fillStyle="#17202a"; ctx.fillText(String(val),x,y-8); ctx.save(); ctx.translate(x,H-35); ctx.rotate(-0.45); ctx.fillText(label.slice(0,22),0,0); ctx.restore(); });
+      entries.forEach(([label,val],i)=>{ const x=pad+i*(bw+gap), h=(H-150)*(val/max), y=H-95-h; ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(x,y,bw,h); ctx.fillStyle="#17202a"; ctx.fillText(String(val),x,y-10); ctx.save(); ctx.translate(x,H-58); ctx.rotate(-0.35); ctx.font="22px Arial"; ctx.fillText(label.slice(0,24),0,0); ctx.restore(); });
+      if (id === "typeChart") {
+        c.onclick = (event) => {
+          const rect = c.getBoundingClientRect();
+          const clickX = (event.clientX - rect.left) * 2;
+          entries.forEach(([label], i) => {
+            const x=pad+i*(bw+gap);
+            if (clickX >= x && clickX <= x + bw) {
+              const map = {"Train Audit":"train","Base Kitchen Audit":"base","Store Audit":"store","Manager Train Visit":"managerVisit"};
+              activeType = map[label] || "";
+              $("globalType").value = activeType;
+              renderAll();
+            }
+          });
+        };
+      }
     }
     function lineChart(id, obj) {
       const c=$(id), ctx=c.getContext("2d"), W=c.width=c.clientWidth*2, H=c.height=260*2; ctx.clearRect(0,0,W,H);
@@ -326,9 +405,17 @@
     }
     function exportCsv() {
       const data = filtered();
-      const rows = [["ID","Date","Type","Location","Auditor","Score","Max","Compliance","Status"]];
-      data.forEach(r => rows.push([r.id,r.date,r.typeLabel||r.type,r.location,r.auditor,r.totals?.score,r.totals?.max,r.totals?.pct,(r.totals?.pct||0)>=60?"Pass":"Fail"]));
-      download("rk-audit-dashboard.csv", rows.map(r => r.map(v => `"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n"), "text/csv");
+      const summary = [["ID","Date","Type","Location","Manager","Auditor","Score","Max","Compliance","Status"]];
+      const detail = [["ID","Point No","Status","Remarks","Major Observation"]];
+      data.forEach(r => {
+        summary.push([r.id,r.date,r.typeLabel||r.type,r.location,r.manager,r.auditor,r.totals?.score,r.totals?.max,r.totals?.pct,(r.totals?.pct||0)>=60?"Pass":"Fail"]);
+        Object.entries(r.responses || {}).forEach(([idx,val]) => detail.push([r.id,Number(idx)+1,statusLabel(val),r.itemRemarks?.[idx]||"",r.observations?.major||""]));
+      });
+      download("rk-audit-dashboard-report.xls", buildExcelXml({ Summary: summary, Detail: detail }), "application/vnd.ms-excel");
+    }
+    function buildExcelXml(sheets) {
+      const sheetXml = Object.entries(sheets).map(([name, rows]) => `<Worksheet ss:Name="${name}"><Table>${rows.map(r => `<Row>${r.map(v => `<Cell><Data ss:Type="String">${String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;")}</Data></Cell>`).join("")}</Row>`).join("")}</Table></Worksheet>`).join("");
+      return `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${sheetXml}</Workbook>`;
     }
     function downloadJson(){ download("rk-audit-data.json", JSON.stringify(reports,null,2), "application/json"); }
     function download(name, content, type){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
