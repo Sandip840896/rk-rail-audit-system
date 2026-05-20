@@ -32,6 +32,10 @@
     table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#eef5fb;color:var(--rail-blue)}
     .table-scroll{overflow:auto;border:1px solid var(--line);border-radius:8px;max-height:440px}
     canvas{width:100%;height:260px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:10px}
+    .photo-grid img{width:100%;height:110px;object-fit:cover;border:1px solid var(--line);border-radius:8px}
+    .detail-panel{position:fixed;inset:0;background:rgba(17,24,39,.72);z-index:20;display:grid;place-items:center;padding:18px}
+    .detail-card{background:#fff;color:var(--ink);border-radius:8px;max-width:1080px;width:100%;max-height:88vh;overflow:auto;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
     .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.tabs button{width:auto;border-radius:999px;padding:9px 12px}.tabs button.active{background:var(--signal-red)}
     .status-pass{color:var(--green);font-weight:800}.status-fail{color:var(--signal-red);font-weight:800}
     footer{position:fixed;left:0;right:0;bottom:0;max-width:none;background:#111827;color:#fff;text-align:center;font-size:12px;border-top:3px solid var(--signal-red)}
@@ -113,6 +117,15 @@
         <p id="dataMsg" class="small"></p>
       </section>
     </section>
+    <section id="detailPanel" class="detail-panel hidden">
+      <div class="detail-card">
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between">
+          <h2 id="detailTitle">Audit Detail</h2>
+          <button class="ghost" onclick="closeAuditDetail()" style="width:auto">Close</button>
+        </div>
+        <div id="detailBody"></div>
+      </div>
+    </section>
   </main>
   <footer>System devolopd by Sandip Nandi . Support Number - +91 8584833366 , Mail ID - sandipnandi2000@gmail.com</footer>
 
@@ -150,7 +163,7 @@
     const setLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
     let reports = [];
     let currentUser = null;
-    window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig;
+    window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig; window.viewAuditDetail = viewAuditDetail; window.closeAuditDetail = closeAuditDetail;
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
     $("loginBtn").onclick = login;
     $("logoutBtn").onclick = async () => { if (auth && signOut) await signOut(auth).catch(console.warn); location.reload(); };
@@ -233,8 +246,45 @@
       lineChart("trendChart", trend(data));
     }
     function renderTable(data) {
-      $("reportTable").innerHTML = `<tr><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Auditor</th><th>Score</th><th>Status</th><th>Observation</th></tr>` +
-        data.map(r => `<tr><td>${r.id||""}</td><td>${r.date||""}</td><td>${r.typeLabel||r.type||""}</td><td>${r.location||""}</td><td>${r.auditor||""}</td><td>${r.totals?.score||0}/${r.totals?.max||0} (${r.totals?.pct||0}%)</td><td class="${(r.totals?.pct||0)>=60?"status-pass":"status-fail"}">${(r.totals?.pct||0)>=60?"Pass":"Fail"}</td><td>${r.observations?.major||""}</td></tr>`).join("");
+      $("reportTable").innerHTML = `<tr><th>View</th><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Auditor</th><th>Score</th><th>Status</th><th>Observation</th></tr>` +
+        data.map(r => `<tr><td><button class="ghost" onclick="viewAuditDetail('${r.id||""}')" style="width:auto">View</button></td><td>${escapeHtml(r.id||"")}</td><td>${escapeHtml(r.date||"")}</td><td>${escapeHtml(r.typeLabel||r.type||"")}</td><td>${escapeHtml(r.location||"")}</td><td>${escapeHtml(r.auditor||"")}</td><td>${r.totals?.score||0}/${r.totals?.max||0} (${r.totals?.pct||0}%)</td><td class="${(r.totals?.pct||0)>=60?"status-pass":"status-fail"}">${(r.totals?.pct||0)>=60?"Pass":"Fail"}</td><td>${escapeHtml(r.observations?.major||"")}</td></tr>`).join("");
+    }
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+    }
+    function statusLabel(value) {
+      return value === "yes" ? "Maintained / 5" : value === "partial" ? "Needs Improvement / 3" : value === "no" ? "Not Maintain / 0" : value === "na" ? "N/A" : "Not marked";
+    }
+    function viewAuditDetail(id) {
+      const report = reports.find(r => String(r.id) === String(id));
+      if (!report) return;
+      $("detailTitle").textContent = `${report.typeLabel || report.type || "Audit"} - ${report.location || ""}`;
+      const responseRows = Object.entries(report.responses || {}).map(([idx, val]) => `<tr><td>${Number(idx)+1}</td><td>${statusLabel(val)}</td><td>${escapeHtml(report.itemRemarks?.[idx] || "")}</td></tr>`).join("");
+      const stationeryRows = (report.stationery || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.status)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
+      const assetRows = (report.assets || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.code)}</td><td>${escapeHtml(x.category)}</td><td>${escapeHtml(x.systemQty)}</td><td>${escapeHtml(x.physicalQty)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
+      const photos = (report.photos || []).map((p, i) => `<a href="${p.dataUrl}" target="_blank"><img src="${p.dataUrl}" alt="Evidence ${i+1}"></a>`).join("");
+      $("detailBody").innerHTML = `
+        <div class="grid four" style="margin-top:12px">
+          <div class="card"><span class="small">Audit ID</span><b>${escapeHtml(report.id || "")}</b></div>
+          <div class="card"><span class="small">Date</span><b>${escapeHtml(report.date || "")}</b></div>
+          <div class="card"><span class="small">Score</span><b>${report.totals?.score || 0}/${report.totals?.max || 0}</b></div>
+          <div class="card"><span class="small">Compliance</span><b>${report.totals?.pct || 0}%</b></div>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <h3>Audit Information</h3>
+          <table><tr><th>Auditor</th><th>Manager</th><th>Contact</th><th>Document Ref</th></tr>
+          <tr><td>${escapeHtml(report.auditor || "")}</td><td>${escapeHtml(report.manager || "")}</td><td>${escapeHtml(report.contact || "")}</td><td>${escapeHtml(report.docRef || "")}</td></tr></table>
+        </div>
+        <div class="card" style="margin-top:12px"><h3>Rate Card Responses</h3><div class="table-scroll"><table><tr><th>Point No.</th><th>Compliance / Score</th><th>Remarks</th></tr>${responseRows || "<tr><td colspan='3'>No responses saved.</td></tr>"}</table></div></div>
+        <div class="card" style="margin-top:12px"><h3>Stationery Compliance</h3><div class="table-scroll"><table><tr><th>Document</th><th>Status</th><th>Remarks</th></tr>${stationeryRows || "<tr><td colspan='3'>No stationery records.</td></tr>"}</table></div></div>
+        <div class="card" style="margin-top:12px"><h3>Fixed Assets</h3><div class="table-scroll"><table><tr><th>Name</th><th>Code</th><th>Category</th><th>System Qty</th><th>Physical Qty</th><th>Remarks</th></tr>${assetRows || "<tr><td colspan='6'>No asset records.</td></tr>"}</table></div></div>
+        <div class="card" style="margin-top:12px"><h3>Observations</h3><p><b>Major:</b> ${escapeHtml(report.observations?.major || "")}</p><p><b>Corrective:</b> ${escapeHtml(report.observations?.corrective || "")}</p><p><b>Final:</b> ${escapeHtml(report.observations?.final || "")}</p></div>
+        <div class="card" style="margin-top:12px"><h3>Photo Evidence</h3><div class="photo-grid">${photos || "<p class='small'>No photos attached.</p>"}</div></div>
+      `;
+      $("detailPanel").classList.remove("hidden");
+    }
+    function closeAuditDetail() {
+      $("detailPanel").classList.add("hidden");
     }
     function renderRisk(data) {
       const risk = [...data].filter(r => (r.totals?.pct || 0) < 75).sort((a,b)=>(a.totals?.pct||0)-(b.totals?.pct||0)).slice(0,10);
