@@ -428,6 +428,7 @@
           <button class="danger" onclick="deleteAuditRecordsPrompt('base')">Delete Base Kitchen Audit Records</button>
           <button class="danger" onclick="deleteAuditRecordsPrompt('store')">Delete Store Audit Records</button>
           <button class="danger" onclick="deleteAuditRecordsPrompt('managerVisit')">Delete Manager Visit Records</button>
+          <button class="danger" onclick="deleteAssetMasterPrompt()">Delete Asset Master</button>
         </div>
         <input id="dataUpload" class="hidden" type="file" accept="application/json" onchange="uploadData(event)">
         <label>Firebase Config Area</label>
@@ -521,6 +522,15 @@
       dashboard: { read: true, write: true },
       admin: { read: true, write: true },
       super: { read: true, write: true }
+    };
+    const demoPermissions = {
+      train: { read: true, write: false },
+      base: { read: true, write: false },
+      store: { read: true, write: false },
+      managerVisit: { read: true, write: false },
+      dashboard: { read: false, write: false },
+      admin: { read: false, write: false },
+      super: { read: false, write: false }
     };
     const auditItems = {
       train: [
@@ -674,6 +684,7 @@
     window.closeAuditDetail = closeAuditDetail;
     window.closeSuccessModal = closeSuccessModal;
     window.deleteAuditRecordsPrompt = deleteAuditRecordsPrompt;
+    window.deleteAssetMasterPrompt = deleteAssetMasterPrompt;
     window.downloadData = downloadData;
     window.uploadData = uploadData;
     window.downloadCurrentHtml = downloadCurrentHtml;
@@ -701,7 +712,7 @@
       const pass = $("loginPassword").value;
       $("loginMsg").textContent = "";
       if (id === "demo" && pass === "demo") {
-        current.user = { id, email: id, name: "Demo Auditor", role: "auditor", permissions: fullPermissions };
+        current.user = { id, email: id, name: "Demo Auditor", role: "auditor", permissions: demoPermissions };
         enterApp();
         return;
       }
@@ -743,7 +754,7 @@
       $("appScreen").classList.remove("hidden");
       $("logoutBtn").classList.remove("hidden");
       $("superTab").classList.toggle("hidden", current.user.email !== "sandipnandi2000@gmail.com");
-      document.querySelector('[data-tab="admin"]').classList.toggle("hidden", !canRead("admin") && current.user.role !== "super-admin");
+      document.querySelector('[data-tab="admin"]').classList.toggle("hidden", current.user.email === "demo" || (!canRead("admin") && current.user.role !== "super-admin"));
       $("mastersTab").classList.toggle("hidden", current.user.email === "demo" || (!canRead("admin") && current.user.role !== "super-admin"));
       $("auditorName").value = current.user.name || current.user.email;
       document.querySelectorAll(".audit-option").forEach(card => {
@@ -1667,6 +1678,19 @@
         }
       }
       alert(`${label} deleted.`);
+    }
+
+    async function deleteAssetMasterPrompt() {
+      const email = prompt("Big warning: this will delete Asset Master from this app and Firebase. Enter Super Admin email to continue.");
+      if (email !== "sandipnandi2000@gmail.com") return;
+      const pass = prompt("Enter Super Admin password again.");
+      if (pass !== "Sanju@1234") return;
+      if (!confirm("Final confirmation: delete Asset Master?")) return;
+      localStorage.removeItem("rkMaster_asset");
+      setLocal("rkMaster_asset", []);
+      if (db && deleteDoc && doc) await deleteDoc(doc(db, "masters", "asset")).catch(console.warn);
+      renderMasterSummary();
+      alert("Asset Master deleted.");
     }
 
     function downloadBlob(name, content, type) {
