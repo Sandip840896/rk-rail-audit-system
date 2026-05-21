@@ -306,7 +306,7 @@
       const responseRows = Object.entries(report.responses || {}).map(([idx, val]) => `<tr><td>${Number(idx)+1}</td><td>${statusLabel(val)}</td><td>${escapeHtml(report.itemRemarks?.[idx] || "")}</td></tr>`).join("");
       const stationeryRows = (report.stationery || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.status)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
       const assetRows = (report.assets || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.code)}</td><td>${escapeHtml(x.category)}</td><td>${escapeHtml(x.systemQty)}</td><td>${escapeHtml(x.physicalQty)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
-      const allPhotos = [...(report.photos || []), ...Object.values(report.pointPhotos || {}).flat(), ...(report.staffListPhoto ? [report.staffListPhoto] : [])];
+      const allPhotos = [...(report.photos || []), ...Object.values(report.pointPhotos || {}).flat(), ...Object.values(report.stationeryPhotos || {}).flat(), ...(report.staffListPhoto ? [report.staffListPhoto] : [])];
       const photos = allPhotos.map((p, i) => `<a href="${p.dataUrl}" target="_blank"><img src="${p.dataUrl}" alt="Evidence ${i+1}"></a>`).join("");
       $("detailBody").innerHTML = `
         <div class="grid four" style="margin-top:12px">

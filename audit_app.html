@@ -157,7 +157,7 @@
     <div class="bar">
       <div class="logo">RK</div>
       <div class="title">
-        <h1>KR/RK Group Indian Rail Catering Audit</h1>
+        <h1>RK Group Indian Rail Catering Audit</h1>
         <div class="small">Train, Base Kitchen and Store audit app</div>
       </div>
       <button id="logoutBtn" class="ghost hidden" style="width:auto">Logout</button>
@@ -364,16 +364,17 @@
         <h2>Master Data</h2>
         <p class="small">Upload CSV masters for trains, stores, base kitchens and assets. If a train, store or base kitchen is not listed, auditors can still enter details manually.</p>
         <div class="grid three">
-          <div><label>Train Master CSV</label><input id="trainMasterUpload" type="file" accept=".csv"></div>
-          <div><label>Store Master CSV</label><input id="storeMasterUpload" type="file" accept=".csv"></div>
-          <div><label>Base Kitchen Master CSV</label><input id="baseMasterUpload" type="file" accept=".csv"></div>
-          <div><label>Asset Master CSV</label><input id="assetMasterUpload" type="file" accept=".csv"></div>
+          <div><label>Train Master CSV</label><input id="trainMasterUpload" type="file" accept=".csv"><button onclick="triggerMasterUpload('train')" style="margin-top:8px">Upload Train Master</button></div>
+          <div><label>Store Master CSV</label><input id="storeMasterUpload" type="file" accept=".csv"><button onclick="triggerMasterUpload('store')" style="margin-top:8px">Upload Store Master</button></div>
+          <div><label>Base Kitchen Master CSV</label><input id="baseMasterUpload" type="file" accept=".csv"><button onclick="triggerMasterUpload('base')" style="margin-top:8px">Upload Base Master</button></div>
+          <div><label>Asset Master CSV</label><input id="assetMasterUpload" type="file" accept=".csv"><button onclick="triggerMasterUpload('asset')" style="margin-top:8px">Upload Asset Master</button></div>
         </div>
         <div class="grid three" style="margin-top:12px">
           <button onclick="downloadMasterSample('train')">Train Sample</button>
           <button onclick="downloadMasterSample('site')">Store/Base Sample</button>
           <button onclick="downloadMasterSample('asset')">Asset Sample</button>
         </div>
+        <p id="masterUploadStatus" class="small"></p>
         <div class="table-scroll" style="margin-top:12px"><table id="masterSummaryTable"></table></div>
       </section>
 
@@ -386,6 +387,10 @@
           <button class="warn" onclick="document.getElementById('dataUpload').click()">Upload / Overwrite Data</button>
           <button class="secondary" onclick="testFirebase()">Test Firebase Connection</button>
           <button class="danger" onclick="deleteAuditRecordsPrompt()">Delete All Audit Records</button>
+          <button class="danger" onclick="deleteAuditRecordsPrompt('train')">Delete Train Audit Records</button>
+          <button class="danger" onclick="deleteAuditRecordsPrompt('base')">Delete Base Kitchen Audit Records</button>
+          <button class="danger" onclick="deleteAuditRecordsPrompt('store')">Delete Store Audit Records</button>
+          <button class="danger" onclick="deleteAuditRecordsPrompt('managerVisit')">Delete Manager Visit Records</button>
         </div>
         <input id="dataUpload" class="hidden" type="file" accept="application/json" onchange="uploadData(event)">
         <label>Firebase Config Area</label>
@@ -455,7 +460,7 @@
       } catch (err) { console.warn(err); }
     }
 
-    const current = { user: null, auditType: null, responses: {}, assets: [], photos: [], pointPhotos: {}, managerDocs: {}, managerAssets: [] };
+    const current = { user: null, auditType: null, responses: {}, assets: [], photos: [], pointPhotos: {}, stationeryPhotos: {}, managerDocs: {}, managerAssets: [] };
     const seededMasters = {
       train: [
         { trainNo: "12097-098", trainName: "Agartala Agplkgbp Janshtabdi", trainType: "TSV", yardName: "AGARTALA", businessHead: "KUNDAN JHA", businessHeadMobile: "9958185005", trainManager: "RATAN KUMAR", trainManagerNumber: "8521856685", racks: "1", clusterNo: "NFR/CLT/A-4", noOfRakes: "R1", rackManagerName: "SANDEEP JAISWAL", contactNo: "6393959470" },
@@ -625,6 +630,7 @@
     window.sendSelectedPasswordReset = sendSelectedPasswordReset;
     window.downloadBulkUserSample = downloadBulkUserSample;
     window.downloadMasterSample = downloadMasterSample;
+    window.triggerMasterUpload = triggerMasterUpload;
     window.downloadMyExcel = downloadMyExcel;
     window.clearReportFilters = clearReportFilters;
     window.viewMyAuditDetail = viewMyAuditDetail;
@@ -746,6 +752,7 @@
       current.assets = [];
       current.photos = [];
       current.pointPhotos = {};
+      current.stationeryPhotos = {};
       current.managerDocs = {};
       current.managerAssets = [];
       current.staffListPhoto = null;
@@ -868,8 +875,17 @@
         row.className = "grid two";
         row.innerHTML = `
           <div><label>${i + 1}. ${name}</label><select data-stationery="${i}"><option>Available</option><option>Not Available</option><option>Not Applicable</option></select></div>
-          <div><label>Validity / Remarks</label><input data-stationery-remark="${i}" placeholder="Validity date or remarks"></div>`;
+          <div><label>Validity / Remarks</label><input data-stationery-remark="${i}" placeholder="Validity date or remarks"></div>
+          <div class="evidence-box hidden" id="stationeryEvidence${i}">
+            <label>Certificate / Licence Photo Evidence</label>
+            <input type="file" accept="image/*" capture="environment" data-stationery-photo="${i}">
+            <div id="stationeryPhotoPreview${i}" class="photo-grid"></div>
+          </div>`;
         holder.appendChild(row);
+        row.querySelector(`[data-stationery="${i}"]`).onchange = (event) => {
+          $("stationeryEvidence" + i).classList.toggle("hidden", event.target.value !== "Available");
+        };
+        row.querySelector(`[data-stationery-photo="${i}"]`).onchange = (event) => handleStationeryPhotoInput(event, i);
       });
     }
 
@@ -939,6 +955,15 @@
       current.pointPhotos[index] = current.pointPhotos[index] || [];
       current.pointPhotos[index].push({ name: file.name, dataUrl: await compressImage(file, 900, 0.68), addedAt: new Date().toISOString() });
       renderPointPhotoPreview(index);
+    }
+
+    async function handleStationeryPhotoInput(event, index) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      current.stationeryPhotos[index] = current.stationeryPhotos[index] || [];
+      current.stationeryPhotos[index].push({ name: file.name, dataUrl: await compressImage(file, 900, 0.68), addedAt: new Date().toISOString() });
+      const holder = $("stationeryPhotoPreview" + index);
+      holder.innerHTML = current.stationeryPhotos[index].map(p => `<div class="photo-thumb"><img src="${p.dataUrl}" alt="Certificate evidence"></div>`).join("");
     }
 
     function renderPointPhotoPreview(index) {
@@ -1093,6 +1118,7 @@
         photos: current.photos,
         pointPhotos: current.pointPhotos,
         staffListPhoto: current.staffListPhoto || null,
+        stationeryPhotos: current.stationeryPhotos,
         managerDocs: current.managerDocs || {},
         totals,
         responses: current.responses,
@@ -1395,7 +1421,18 @@
       setLocal("rkMaster_" + type, data);
       if (db && setDoc && doc) await setDoc(doc(db, "masters", type), { data, updatedAt: new Date().toISOString() });
       renderMasterSummary();
+      $("masterUploadStatus").textContent = `${type} master uploaded successfully with ${data.length} records.`;
       alert("Master uploaded: " + type);
+    }
+
+    function triggerMasterUpload(type) {
+      const ids = { train: "trainMasterUpload", store: "storeMasterUpload", base: "baseMasterUpload", asset: "assetMasterUpload" };
+      const input = $(ids[type]);
+      if (!input.files || !input.files.length) {
+        alert("Please choose a CSV file first, then click upload.");
+        return;
+      }
+      uploadMasterCsv({ target: input }, type);
     }
 
     function normalizeHeader(h) {
@@ -1434,18 +1471,24 @@
 
     function closeSuccessModal() { $("successModal").classList.add("hidden"); showTab("reports"); }
 
-    async function deleteAuditRecordsPrompt() {
-      const email = prompt("Big warning: this will delete all audit records from this app and Firebase. Enter Super Admin email to continue.");
+    async function deleteAuditRecordsPrompt(type = "") {
+      const label = type ? `${titleMap[type] || type} records` : "ALL audit records";
+      const email = prompt(`Big warning: this will delete ${label} from this app and Firebase. Enter Super Admin email to continue.`);
       if (email !== "sandipnandi2000@gmail.com") return;
       const pass = prompt("Enter Super Admin password again.");
       if (pass !== "Sanju@1234") return;
-      if (!confirm("Final confirmation: delete ALL four audit records and start fresh?")) return;
-      localStorage.removeItem("rkAuditReports");
+      if (!confirm(`Final confirmation: delete ${label}?`)) return;
+      let localReports = getLocal("rkAuditReports", []);
+      localReports = type ? localReports.filter(r => r.type !== type) : [];
+      setLocal("rkAuditReports", localReports);
       if (db && getDocs && deleteDoc && doc) {
         const snap = await getDocs(collection(db, "auditReports"));
-        for (const d of snap.docs) await deleteDoc(doc(db, "auditReports", d.id));
+        for (const d of snap.docs) {
+          const data = d.data();
+          if (!type || data.type === type) await deleteDoc(doc(db, "auditReports", d.id));
+        }
       }
-      alert("All audit records deleted.");
+      alert(`${label} deleted.`);
     }
 
     function downloadBlob(name, content, type) {
