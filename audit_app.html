@@ -986,14 +986,23 @@
       $("assetRows").innerHTML = "";
       current.assets = [];
       if (current.auditType === "managerVisit" || current.auditType === "train") {
-        const trainLabel = $("locationName").value.toLowerCase();
-        const selected = getMaster("train")[Number($("masterSelect").value)] || {};
-        const trainName = (selected.trainName || trainLabel).toLowerCase();
-        const masterAssets = getMaster("asset").filter(a => String(a.trainName || "").toLowerCase() === trainName);
+        const trainLabel = getSelectedTrainName();
+        const selectedValue = $("trainNameSelect")?.value || "";
+        const selected = selectedValue === "" ? {} : (getMaster("train")[Number(selectedValue)] || {});
+        const trainName = normalizeText(selected.trainName || trainLabel);
+        const masterAssets = getMaster("asset").filter(a => normalizeText(a.trainName || "") === trainName);
         if (masterAssets.length) {
+          const title = document.createElement("div");
+          title.className = "pill";
+          title.textContent = `Asset master loaded: ${masterAssets.length} items`;
+          $("assetRows").appendChild(title);
           masterAssets.forEach(a => addAssetMasterRow(a));
           return;
         }
+        const note = document.createElement("p");
+        note.className = "small";
+        note.textContent = "No asset master found for this train. Auditor can add asset rows manually.";
+        $("assetRows").appendChild(note);
       }
       addAssetRow();
     }
@@ -1007,9 +1016,20 @@
         <div><label>Asset Name</label><input data-asset="${index}" data-field="name" value="${asset.assetName || ""}" readonly></div>
         <div><label>System Qty</label><input type="number" data-asset="${index}" data-field="systemQty" value="${asset.qty || 0}" readonly></div>
         <div><label>Physical Qty</label><input type="number" data-asset="${index}" data-field="physicalQty" oninput="calculateScore()"></div>
+        <div><label>Variance</label><input data-asset-variance="${index}" readonly></div>
         <div><label>Score</label><input data-asset-score="${index}" readonly></div>
         <div><label>Remarks</label><input data-asset="${index}" data-field="remarks"></div>`;
       $("assetRows").appendChild(row);
+    }
+
+    function getSelectedTrainName() {
+      const selectedName = $("trainNameSelect")?.selectedOptions?.[0]?.textContent || "";
+      if (selectedName && selectedName !== "Manual entry / Train not listed") return selectedName;
+      return $("trainManualNameInput")?.value || $("locationName")?.value || "";
+    }
+
+    function normalizeText(value) {
+      return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
     }
 
     async function handlePhotoInput(event) {
@@ -1147,12 +1167,17 @@
         const planned = Number(a.systemQty || 0);
         const actual = Number(a.physicalQty || 0);
         let s = 5;
+        let variance = actual - planned;
         if (planned > 0) {
           const ratio = actual / planned;
           s = ratio >= 1 ? 5 : ratio >= 0.9 ? 3 : 0;
         }
+        const varianceField = document.querySelector(`[data-asset-variance="${idx}"]`);
+        if (varianceField) varianceField.value = variance;
         const scoreField = document.querySelector(`[data-asset-score="${idx}"]`);
         if (scoreField) scoreField.value = s + "/5";
+        a.variance = variance;
+        a.score = s;
         total += 5; earned += s;
       });
       if (!total) return responseScore(current.responses[7]);
@@ -1203,6 +1228,13 @@
         const idx = Number(input.dataset.asset);
         assets[idx] = assets[idx] || {};
         assets[idx][input.dataset.field] = input.value;
+      });
+      assets.forEach((asset, idx) => {
+        if (!asset) return;
+        const planned = Number(asset.systemQty || 0);
+        const actual = Number(asset.physicalQty || 0);
+        asset.variance = actual - planned;
+        asset.score = document.querySelector(`[data-asset-score="${idx}"]`)?.value || "";
       });
       const report = {
         id: "AUD-" + Date.now(),
@@ -1296,8 +1328,9 @@
       if (!report) return;
       $("auditDetailTitle").textContent = `${report.typeLabel || report.type} - ${report.location || ""}`;
       const responses = Object.entries(report.responses || {}).map(([idx,val]) => `<tr><td>${Number(idx)+1}</td><td>${statusLabel(val)}</td><td>${report.itemRemarks?.[idx] || ""}</td></tr>`).join("");
-      const photos = [...(report.photos || []), ...Object.values(report.pointPhotos || {}).flat(), ...(report.staffListPhoto ? [report.staffListPhoto] : [])].map(p => `<img src="${p.dataUrl}" style="width:120px;height:95px;object-fit:cover;border:1px solid #ddd;border-radius:8px;margin:5px">`).join("");
-      $("auditDetailBody").innerHTML = `<div class="scorebox"><div><span class="small">Date</span><b>${report.date || ""}</b></div><div><span class="small">Score</span><b>${report.totals?.score || 0}/${report.totals?.max || 0}</b></div><div><span class="small">Compliance</span><b>${report.totals?.pct || 0}%</b></div></div><div class="table-scroll"><table><tr><th>Point</th><th>Status</th><th>Remarks</th></tr>${responses}</table></div><h3>Observation</h3><p>${report.observations?.major || ""}</p><h3>Photos</h3><div>${photos || "No photos attached."}</div>`;
+      const assetRows = (report.assets || []).map(a => `<tr><td>${a.name || ""}</td><td>${a.systemQty || ""}</td><td>${a.physicalQty || ""}</td><td>${a.variance ?? ""}</td><td>${a.score || ""}</td><td>${a.remarks || ""}</td></tr>`).join("");
+      const photos = [...(report.photos || []), ...Object.values(report.pointPhotos || {}).flat(), ...Object.values(report.stationeryPhotos || {}).flat(), ...(report.staffListPhoto ? [report.staffListPhoto] : [])].map(p => `<img src="${p.dataUrl}" style="width:120px;height:95px;object-fit:cover;border:1px solid #ddd;border-radius:8px;margin:5px">`).join("");
+      $("auditDetailBody").innerHTML = `<div class="scorebox"><div><span class="small">Date</span><b>${report.date || ""}</b></div><div><span class="small">Score</span><b>${report.totals?.score || 0}/${report.totals?.max || 0}</b></div><div><span class="small">Compliance</span><b>${report.totals?.pct || 0}%</b></div></div><div class="table-scroll"><table><tr><th>Point</th><th>Status</th><th>Remarks</th></tr>${responses}</table></div><h3>Asset Details</h3><div class="table-scroll"><table><tr><th>Asset</th><th>System Qty</th><th>Physical Qty</th><th>Variance</th><th>Score</th><th>Remarks</th></tr>${assetRows || "<tr><td colspan='6'>No asset records.</td></tr>"}</table></div><h3>Observation</h3><p>${report.observations?.major || ""}</p><h3>Photos</h3><div>${photos || "No photos attached."}</div>`;
       $("auditDetailPanel").classList.remove("hidden");
     }
 

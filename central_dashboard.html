@@ -119,6 +119,10 @@
           <h2>Deep Finding Table</h2>
           <div class="table-scroll"><table id="findingTable"></table></div>
         </div>
+        <div class="card" style="margin-top:14px">
+          <h2>Asset Variance Analysis</h2>
+          <div class="table-scroll"><table id="assetVarianceTable"></table></div>
+        </div>
       </section>
 
       <section id="tab-data" class="hidden card">
@@ -279,6 +283,7 @@
       const avg = data.length ? Math.round(data.reduce((s,r)=>s+(r.totals?.pct||0),0)/data.length) : 0;
       $("kTotal").textContent = data.length; $("kAvg").textContent = avg + "%"; $("kPass").textContent = pass; $("kFail").textContent = fail;
       renderTable(data); renderRisk(data); renderFindings(data);
+      renderAssetVariance(data);
       barChart("typeChart", countBy(data, r => r.typeLabel || r.type), ["#123c69","#d8343a","#14804a","#b76e00"]);
       barChart("scoreChart", scoreBands(data), ["#d8343a","#b76e00","#14804a","#123c69"]);
       barChart("auditorChart", countBy(data, r => r.auditor || "Unknown"), ["#123c69"]);
@@ -305,7 +310,7 @@
       $("detailTitle").textContent = `${report.typeLabel || report.type || "Audit"} - ${report.location || ""}`;
       const responseRows = Object.entries(report.responses || {}).map(([idx, val]) => `<tr><td>${Number(idx)+1}</td><td>${statusLabel(val)}</td><td>${escapeHtml(report.itemRemarks?.[idx] || "")}</td></tr>`).join("");
       const stationeryRows = (report.stationery || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.status)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
-      const assetRows = (report.assets || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.code)}</td><td>${escapeHtml(x.category)}</td><td>${escapeHtml(x.systemQty)}</td><td>${escapeHtml(x.physicalQty)}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
+      const assetRows = (report.assets || []).map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.code)}</td><td>${escapeHtml(x.category)}</td><td>${escapeHtml(x.systemQty)}</td><td>${escapeHtml(x.physicalQty)}</td><td>${escapeHtml(x.variance ?? "")}</td><td>${escapeHtml(x.score ?? "")}</td><td>${escapeHtml(x.remarks)}</td></tr>`).join("");
       const allPhotos = [...(report.photos || []), ...Object.values(report.pointPhotos || {}).flat(), ...Object.values(report.stationeryPhotos || {}).flat(), ...(report.staffListPhoto ? [report.staffListPhoto] : [])];
       const photos = allPhotos.map((p, i) => `<a href="${p.dataUrl}" target="_blank"><img src="${p.dataUrl}" alt="Evidence ${i+1}"></a>`).join("");
       $("detailBody").innerHTML = `
@@ -322,7 +327,7 @@
         </div>
         <div class="card" style="margin-top:12px"><h3>Rate Card Responses</h3><div class="table-scroll"><table><tr><th>Point No.</th><th>Compliance / Score</th><th>Remarks</th></tr>${responseRows || "<tr><td colspan='3'>No responses saved.</td></tr>"}</table></div></div>
         <div class="card" style="margin-top:12px"><h3>Stationery Compliance</h3><div class="table-scroll"><table><tr><th>Document</th><th>Status</th><th>Remarks</th></tr>${stationeryRows || "<tr><td colspan='3'>No stationery records.</td></tr>"}</table></div></div>
-        <div class="card" style="margin-top:12px"><h3>Fixed Assets</h3><div class="table-scroll"><table><tr><th>Name</th><th>Code</th><th>Category</th><th>System Qty</th><th>Physical Qty</th><th>Remarks</th></tr>${assetRows || "<tr><td colspan='6'>No asset records.</td></tr>"}</table></div></div>
+        <div class="card" style="margin-top:12px"><h3>Fixed Assets</h3><div class="table-scroll"><table><tr><th>Name</th><th>Code</th><th>Category</th><th>System Qty</th><th>Physical Qty</th><th>Variance</th><th>Score</th><th>Remarks</th></tr>${assetRows || "<tr><td colspan='8'>No asset records.</td></tr>"}</table></div></div>
         <div class="card" style="margin-top:12px"><h3>Observations</h3><p><b>Major:</b> ${escapeHtml(report.observations?.major || "")}</p><p><b>Corrective:</b> ${escapeHtml(report.observations?.corrective || "")}</p><p><b>Final:</b> ${escapeHtml(report.observations?.final || "")}</p></div>
         <div class="card" style="margin-top:12px"><h3>Photo Evidence</h3><div class="photo-grid">${photos || "<p class='small'>No photos attached.</p>"}</div></div>
       `;
@@ -341,6 +346,18 @@
         if (val === "no" || val === "partial") rows.push([r.date, r.typeLabel || r.type, r.location, r.auditor, (val === "partial" ? "Needs improvement point #" : "Failed point #") + (Number(idx)+1), r.itemRemarks?.[idx] || ""]);
       }));
       $("findingTable").innerHTML = `<tr><th>Date</th><th>Audit</th><th>Location</th><th>Auditor</th><th>Finding</th><th>Remarks</th></tr>` + rows.map(x => `<tr>${x.map(v=>`<td>${v||""}</td>`).join("")}</tr>`).join("");
+    }
+    function renderAssetVariance(data) {
+      const rows = [];
+      data.forEach(r => (r.assets || []).forEach(a => {
+        const planned = Number(a.systemQty || 0);
+        const actual = Number(a.physicalQty || 0);
+        const variance = a.variance ?? (actual - planned);
+        if (planned || actual || variance) rows.push([r.date, r.typeLabel || r.type, r.location, r.manager || "", a.name || a.assetName || "", planned, actual, variance, a.score || ""]);
+      }));
+      rows.sort((a,b) => Math.abs(Number(b[7] || 0)) - Math.abs(Number(a[7] || 0)));
+      $("assetVarianceTable").innerHTML = `<tr><th>Date</th><th>Audit</th><th>Location</th><th>Manager</th><th>Asset</th><th>System Qty</th><th>Physical Qty</th><th>Variance</th><th>Score</th></tr>` +
+        rows.slice(0,100).map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("");
     }
     function countBy(data, fn) { const o={}; data.forEach(r => { const k=fn(r)||"Unknown"; o[k]=(o[k]||0)+1; }); return o; }
     function avgBy(data, keyFn, valueFn) {
