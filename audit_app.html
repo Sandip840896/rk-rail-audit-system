@@ -221,17 +221,49 @@
               <label>Audit Date</label>
               <input id="auditDate" type="date">
             </div>
-            <div>
+            <div id="genericLocationField">
               <label>Location / Train Name-No</label>
               <input id="locationName" placeholder="Example: 12301 Rajdhani / Howrah Base">
             </div>
-            <div>
+            <div id="genericMasterField">
               <label>Choose From Master</label>
               <select id="masterSelect"></select>
             </div>
-            <div>
+            <div id="genericMasterDetailField">
               <label>Master Detail</label>
               <input id="masterDetail" placeholder="Auto-filled from master or manual detail">
+            </div>
+            <div id="trainNameField" class="hidden">
+              <label>Train Name</label>
+              <select id="trainNameSelect"></select>
+            </div>
+            <div id="trainManualNameField" class="hidden">
+              <label>Train Name Manual Entry</label>
+              <input id="trainManualNameInput" placeholder="Use only if train is not listed">
+            </div>
+            <div id="trainNoField" class="hidden">
+              <label>Train Number</label>
+              <input id="trainNoInput" placeholder="Auto-filled or enter manually">
+            </div>
+            <div id="rackNoField" class="hidden">
+              <label>Rack Number</label>
+              <input id="rackNoInput" placeholder="Auto-filled or enter manually">
+            </div>
+            <div id="yardManagerField" class="hidden">
+              <label>Yard Manager Name</label>
+              <input id="yardManagerInput" placeholder="Auto-filled or enter manually">
+            </div>
+            <div id="yardManagerNoField" class="hidden">
+              <label>Yard Manager Number</label>
+              <input id="yardManagerNoInput" inputmode="tel" placeholder="Auto-filled or enter manually">
+            </div>
+            <div id="rackManagerField" class="hidden">
+              <label>Rack Manager Name</label>
+              <input id="rackManagerInput" placeholder="Auto-filled or enter manually">
+            </div>
+            <div id="rackManagerNoField" class="hidden">
+              <label>Rack Manager Number</label>
+              <input id="rackManagerNoInput" inputmode="tel" placeholder="Auto-filled or enter manually">
             </div>
             <div>
               <label>Auditor Name</label>
@@ -650,6 +682,7 @@
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
     $("photoInput").onchange = handlePhotoInput;
     $("masterSelect").onchange = applySelectedMaster;
+    $("trainNameSelect").onchange = applySelectedTrain;
     $("trainMasterUpload").onchange = (event) => uploadMasterCsv(event, "train");
     $("storeMasterUpload").onchange = (event) => uploadMasterCsv(event, "store");
     $("baseMasterUpload").onchange = (event) => uploadMasterCsv(event, "base");
@@ -758,6 +791,7 @@
       current.staffListPhoto = null;
       $("photoInput").value = "";
       renderPhotoPreview();
+      toggleTrainFields(type === "train" || type === "managerVisit");
       populateMasterSelect(type);
       $("tab-home").classList.add("hidden");
       $("auditForm").classList.remove("hidden");
@@ -779,6 +813,10 @@
     }
 
     function populateMasterSelect(type) {
+      if (type === "train" || type === "managerVisit") {
+        populateTrainSelect();
+        return;
+      }
       const select = $("masterSelect");
       const masterType = type === "train" || type === "managerVisit" ? "train" : type;
       const rows = getMaster(masterType);
@@ -787,10 +825,50 @@
       $("masterDetail").value = "";
     }
 
+    function toggleTrainFields(showTrain) {
+      ["genericLocationField","genericMasterField","genericMasterDetailField"].forEach(id => $(id).classList.toggle("hidden", showTrain));
+      ["trainNameField","trainManualNameField","trainNoField","rackNoField","yardManagerField","yardManagerNoField","rackManagerField","rackManagerNoField"].forEach(id => $(id).classList.toggle("hidden", !showTrain));
+      if (!showTrain) {
+        $("trainNameSelect").value = "";
+        ["trainManualNameInput","trainNoInput","rackNoInput","yardManagerInput","yardManagerNoInput","rackManagerInput","rackManagerNoInput"].forEach(id => $(id).value = "");
+      }
+    }
+
+    function populateTrainSelect() {
+      const rows = getMaster("train");
+      $("trainNameSelect").innerHTML = `<option value="">Manual entry / Train not listed</option>` + rows.map((r, i) => `<option value="${i}">${r.trainName || ""}</option>`).join("");
+      applySelectedTrain();
+    }
+
+    function applySelectedTrain() {
+      const rows = getMaster("train");
+      const selectedValue = $("trainNameSelect").value;
+      const row = selectedValue === "" ? null : rows[Number(selectedValue)];
+      if (!row) {
+        $("trainManualNameInput").value = "";
+        $("locationName").value = "";
+        $("masterDetail").value = "";
+        return;
+      }
+      $("trainManualNameInput").value = row.trainName || "";
+      $("trainNoInput").value = row.trainNo || "";
+      $("rackNoInput").value = row.racks || row.rackNo || "";
+      $("yardManagerInput").value = row.trainManager || row.yardManager || "";
+      $("yardManagerNoInput").value = row.trainManagerNumber || row.yardManagerNumber || "";
+      $("rackManagerInput").value = row.rackManagerName || "";
+      $("rackManagerNoInput").value = row.contactNo || row.rackManagerNumber || "";
+      $("locationName").value = `${row.trainNo || ""} ${row.trainName || ""}`.trim();
+      $("managerName").value = row.trainManager || row.yardManager || row.rackManagerName || "";
+      $("contactNumber").value = row.trainManagerNumber || row.yardManagerNumber || row.contactNo || "";
+      $("masterDetail").value = `Train: ${row.trainName || ""}; Yard: ${row.yardName || ""}; Rack: ${row.racks || ""}; Rack Manager: ${row.rackManagerName || ""}`;
+      renderAssetRowsForAudit();
+    }
+
     function applySelectedMaster() {
       const type = current.auditType === "managerVisit" ? "train" : current.auditType;
       const rows = getMaster(type);
-      const row = rows[Number($("masterSelect").value)];
+      const selectedValue = $("masterSelect").value;
+      const row = selectedValue === "" ? null : rows[Number(selectedValue)];
       if (!row) return;
       if (type === "train") {
         $("locationName").value = `${row.trainNo || ""} ${row.trainName || ""}`.trim();
@@ -1083,6 +1161,29 @@
       return Math.round(avg);
     }
 
+    function getAuditLocation() {
+      if (current.auditType === "train" || current.auditType === "managerVisit") {
+        const selectedName = $("trainNameSelect").selectedOptions[0]?.textContent || "";
+        const manualName = selectedName && selectedName !== "Manual entry / Train not listed" ? selectedName : "";
+        const trainName = manualName || $("trainManualNameInput").value || $("locationName").value || $("trainNoInput").value;
+        return `${$("trainNoInput").value || ""} ${trainName}`.trim();
+      }
+      return $("locationName").value;
+    }
+
+    function getTrainDetailForReport() {
+      if (current.auditType !== "train" && current.auditType !== "managerVisit") return null;
+      return {
+        trainName: $("trainManualNameInput").value || $("trainNameSelect").selectedOptions[0]?.textContent || $("locationName").value || "",
+        trainNumber: $("trainNoInput").value,
+        rackNumber: $("rackNoInput").value,
+        yardManagerName: $("yardManagerInput").value,
+        yardManagerNumber: $("yardManagerNoInput").value,
+        rackManagerName: $("rackManagerInput").value,
+        rackManagerNumber: $("rackManagerNoInput").value
+      };
+    }
+
     async function submitAudit() {
       if (!canWrite(current.auditType)) {
         $("submitMsg").textContent = "You do not have write access for this audit.";
@@ -1108,7 +1209,8 @@
         type: current.auditType,
         typeLabel: titleMap[current.auditType],
         date: $("auditDate").value,
-        location: $("locationName").value,
+        location: getAuditLocation(),
+        trainDetail: getTrainDetailForReport(),
         auditor: $("auditorName").value,
         auditorId: current.user.email || current.user.id,
         manager: $("managerName").value,
