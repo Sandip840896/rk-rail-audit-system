@@ -234,7 +234,12 @@
               <input id="masterDetail" placeholder="Auto-filled from master or manual detail">
             </div>
             <div id="trainNameField" class="hidden">
-              <label>Train Name</label>
+              <label>Train Name Search</label>
+              <input id="trainSearchInput" list="trainMasterList" placeholder="Type train name or number">
+              <datalist id="trainMasterList"></datalist>
+            </div>
+            <div id="trainSelectField" class="hidden">
+              <label>Matched Train From Master</label>
               <select id="trainNameSelect"></select>
             </div>
             <div id="trainManualNameField" class="hidden">
@@ -683,6 +688,7 @@
     $("photoInput").onchange = handlePhotoInput;
     $("masterSelect").onchange = applySelectedMaster;
     $("trainNameSelect").onchange = applySelectedTrain;
+    $("trainSearchInput").oninput = filterTrainOptions;
     $("trainMasterUpload").onchange = (event) => uploadMasterCsv(event, "train");
     $("storeMasterUpload").onchange = (event) => uploadMasterCsv(event, "store");
     $("baseMasterUpload").onchange = (event) => uploadMasterCsv(event, "base");
@@ -827,8 +833,9 @@
 
     function toggleTrainFields(showTrain) {
       ["genericLocationField","genericMasterField","genericMasterDetailField"].forEach(id => $(id).classList.toggle("hidden", showTrain));
-      ["trainNameField","trainManualNameField","trainNoField","rackNoField","yardManagerField","yardManagerNoField","rackManagerField","rackManagerNoField"].forEach(id => $(id).classList.toggle("hidden", !showTrain));
+      ["trainNameField","trainSelectField","trainManualNameField","trainNoField","rackNoField","yardManagerField","yardManagerNoField","rackManagerField","rackManagerNoField"].forEach(id => $(id).classList.toggle("hidden", !showTrain));
       if (!showTrain) {
+        $("trainSearchInput").value = "";
         $("trainNameSelect").value = "";
         ["trainManualNameInput","trainNoInput","rackNoInput","yardManagerInput","yardManagerNoInput","rackManagerInput","rackManagerNoInput"].forEach(id => $(id).value = "");
       }
@@ -836,8 +843,21 @@
 
     function populateTrainSelect() {
       const rows = getMaster("train");
-      $("trainNameSelect").innerHTML = `<option value="">Manual entry / Train not listed</option>` + rows.map((r, i) => `<option value="${i}">${r.trainName || ""}</option>`).join("");
+      $("trainMasterList").innerHTML = rows.map((r) => `<option value="${r.trainName || ""}">${r.trainNo || ""} ${r.yardName || ""}</option>`).join("");
+      $("trainNameSelect").innerHTML = `<option value="">Manual entry / Train not listed</option>` + rows.slice(0, 30).map((r, i) => `<option value="${i}">${r.trainName || ""} (${r.trainNo || ""})</option>`).join("");
       applySelectedTrain();
+    }
+
+    function filterTrainOptions() {
+      const query = normalizeText($("trainSearchInput").value);
+      const rows = getMaster("train");
+      const matches = rows.map((r, i) => ({ r, i })).filter(({ r }) => !query || normalizeText(`${r.trainName} ${r.trainNo} ${r.yardName}`).includes(query)).slice(0, 50);
+      $("trainNameSelect").innerHTML = `<option value="">Manual entry / Train not listed</option>` + matches.map(({ r, i }) => `<option value="${i}">${r.trainName || ""} (${r.trainNo || ""})</option>`).join("");
+      const exact = matches.find(({ r }) => normalizeText(r.trainName) === query || normalizeText(r.trainNo) === query);
+      if (exact) {
+        $("trainNameSelect").value = String(exact.i);
+        applySelectedTrain();
+      }
     }
 
     function applySelectedTrain() {
@@ -992,11 +1012,7 @@
         const trainName = normalizeText(selected.trainName || trainLabel);
         const masterAssets = getMaster("asset").filter(a => normalizeText(a.trainName || "") === trainName);
         if (masterAssets.length) {
-          const title = document.createElement("div");
-          title.className = "pill";
-          title.textContent = `Asset master loaded: ${masterAssets.length} items`;
-          $("assetRows").appendChild(title);
-          masterAssets.forEach(a => addAssetMasterRow(a));
+          renderAssetTable(masterAssets);
           return;
         }
         const note = document.createElement("p");
@@ -1005,6 +1021,32 @@
         $("assetRows").appendChild(note);
       }
       addAssetRow();
+    }
+
+    function renderAssetTable(masterAssets) {
+      current.assets = masterAssets.map(a => ({ name: a.assetName, systemQty: a.qty }));
+      const wrap = document.createElement("div");
+      wrap.className = "table-scroll";
+      wrap.innerHTML = `
+        <table>
+          <tr><th>Asset Name</th><th>System Qty</th><th>Physical Qty</th><th>Variance</th><th>Score</th><th>Remarks</th></tr>
+          ${masterAssets.map((a, index) => `
+            <tr>
+              <td><input data-asset="${index}" data-field="name" value="${a.assetName || ""}" readonly></td>
+              <td><input type="number" data-asset="${index}" data-field="systemQty" value="${a.qty || 0}" readonly></td>
+              <td><input type="number" data-asset="${index}" data-field="physicalQty" oninput="calculateScore()" placeholder="Enter count"></td>
+              <td><input data-asset-variance="${index}" readonly></td>
+              <td><input data-asset-score="${index}" readonly></td>
+              <td><input data-asset="${index}" data-field="remarks" placeholder="Remarks"></td>
+            </tr>
+          `).join("")}
+        </table>`;
+      const title = document.createElement("div");
+      title.className = "pill";
+      title.textContent = `Asset master loaded: ${masterAssets.length} items`;
+      $("assetRows").appendChild(title);
+      $("assetRows").appendChild(wrap);
+      calculateScore();
     }
 
     function addAssetMasterRow(asset) {
@@ -1165,17 +1207,18 @@
       let total = 0, earned = 0;
       rows.filter(Boolean).forEach((a, idx) => {
         const planned = Number(a.systemQty || 0);
-        const actual = Number(a.physicalQty || 0);
-        let s = 5;
+        const hasPhysical = a.physicalQty !== undefined && a.physicalQty !== "";
+        const actual = hasPhysical ? Number(a.physicalQty || 0) : 0;
+        let s = hasPhysical ? 5 : 0;
         let variance = actual - planned;
-        if (planned > 0) {
+        if (planned > 0 && hasPhysical) {
           const ratio = actual / planned;
           s = ratio >= 1 ? 5 : ratio >= 0.9 ? 3 : 0;
         }
         const varianceField = document.querySelector(`[data-asset-variance="${idx}"]`);
-        if (varianceField) varianceField.value = variance;
+        if (varianceField) varianceField.value = hasPhysical ? variance : "";
         const scoreField = document.querySelector(`[data-asset-score="${idx}"]`);
-        if (scoreField) scoreField.value = s + "/5";
+        if (scoreField) scoreField.value = hasPhysical ? s + "/5" : "";
         a.variance = variance;
         a.score = s;
         total += 5; earned += s;
