@@ -252,7 +252,8 @@
             </div>
             <div id="rackNoField" class="hidden">
               <label>Rack Number</label>
-              <input id="rackNoInput" placeholder="Auto-filled or enter manually">
+              <input id="rackNoInput" list="rackMasterList" placeholder="Select or enter rack number">
+              <datalist id="rackMasterList"></datalist>
             </div>
             <div id="yardManagerField" class="hidden">
               <label>Yard Manager Name</label>
@@ -274,7 +275,7 @@
               <label>Auditor Name</label>
               <input id="auditorName">
             </div>
-            <div>
+            <div id="managerNameField">
               <label>Manager Name</label>
               <input id="managerName" placeholder="Train/Base/Store Manager">
             </div>
@@ -303,7 +304,7 @@
           <div id="rateCard"></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="stationeryCard">
           <h2>Stationery Compliance</h2>
           <div id="stationeryRows" class="grid"></div>
         </div>
@@ -389,7 +390,7 @@
           <h3>Bulk User Upload</h3>
           <p class="small">Download sample CSV, fill users and page permissions, then upload to create multiple Firebase users.</p>
           <div class="grid three">
-            <button onclick="downloadBulkUserSample()">Download User Sample</button>
+            <button onclick="downloadBulkUserSample()" style="width:auto;align-self:end">Download User Sample</button>
             <div><label>Upload User CSV</label><input id="bulkUserUpload" type="file" accept=".csv"></div>
             <div><label>Status</label><input id="bulkUserStatus" readonly></div>
           </div>
@@ -411,6 +412,16 @@
           <button onclick="downloadMasterSample('site')">Store/Base Sample</button>
           <button onclick="downloadMasterSample('asset')">Asset Sample</button>
         </div>
+        <div class="grid four" style="margin-top:12px">
+          <button class="ghost" onclick="openMasterViewer('train')">View/Edit Train Master</button>
+          <button class="ghost" onclick="openMasterViewer('store')">View/Edit Store Master</button>
+          <button class="ghost" onclick="openMasterViewer('base')">View/Edit Base Master</button>
+          <button class="ghost" onclick="openMasterViewer('asset')">View/Edit Asset Master</button>
+        </div>
+        <div id="masterLogBox" class="card hidden" style="margin-top:12px;box-shadow:none">
+          <h3>Master Change Log</h3>
+          <div class="table-scroll"><table id="masterLogTable"></table></div>
+        </div>
         <p id="masterUploadStatus" class="small"></p>
         <div class="table-scroll" style="margin-top:12px"><table id="masterSummaryTable"></table></div>
       </section>
@@ -429,6 +440,7 @@
           <button class="danger" onclick="deleteAuditRecordsPrompt('store')">Delete Store Audit Records</button>
           <button class="danger" onclick="deleteAuditRecordsPrompt('managerVisit')">Delete Manager Visit Records</button>
           <button class="danger" onclick="deleteAssetMasterPrompt()">Delete Asset Master</button>
+          <button class="danger" onclick="deleteMasterPrompt('train')">Delete Train Master</button>
         </div>
         <input id="dataUpload" class="hidden" type="file" accept="application/json" onchange="uploadData(event)">
         <label>Firebase Config Area</label>
@@ -444,6 +456,18 @@
           <button class="ghost" onclick="closeAuditDetail()" style="width:auto">Close</button>
         </div>
         <div id="auditDetailBody"></div>
+      </div>
+    </section>
+    <section id="masterViewerPanel" class="success-modal hidden">
+      <div class="success-card" style="max-width:1100px;text-align:left;max-height:88vh;overflow:auto">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+          <h2 id="masterViewerTitle">Master</h2>
+          <button class="ghost" onclick="closeMasterViewer()" style="width:auto">Close</button>
+        </div>
+        <label>Search Master</label>
+        <input id="masterViewerSearch" placeholder="Search any value">
+        <div class="table-scroll" style="margin-top:12px"><table id="masterViewerTable"></table></div>
+        <button onclick="saveMasterViewer()" style="margin-top:12px">Save Master Changes</button>
       </div>
     </section>
     <section id="successModal" class="success-modal hidden">
@@ -681,11 +705,16 @@
     window.triggerMasterUpload = triggerMasterUpload;
     window.downloadMyExcel = downloadMyExcel;
     window.clearReportFilters = clearReportFilters;
+    window.renderReports = renderReports;
     window.viewMyAuditDetail = viewMyAuditDetail;
     window.closeAuditDetail = closeAuditDetail;
     window.closeSuccessModal = closeSuccessModal;
     window.deleteAuditRecordsPrompt = deleteAuditRecordsPrompt;
     window.deleteAssetMasterPrompt = deleteAssetMasterPrompt;
+    window.deleteMasterPrompt = deleteMasterPrompt;
+    window.openMasterViewer = openMasterViewer;
+    window.closeMasterViewer = closeMasterViewer;
+    window.saveMasterViewer = saveMasterViewer;
     window.downloadData = downloadData;
     window.uploadData = uploadData;
     window.downloadCurrentHtml = downloadCurrentHtml;
@@ -701,6 +730,8 @@
     $("masterSelect").onchange = applySelectedMaster;
     $("trainNameSelect").onchange = applySelectedTrain;
     $("trainSearchInput").oninput = filterTrainOptions;
+    $("rackNoInput").oninput = applyRackDetail;
+    $("masterViewerSearch").oninput = renderMasterViewerRows;
     $("trainMasterUpload").onchange = (event) => uploadMasterCsv(event, "train");
     $("storeMasterUpload").onchange = (event) => uploadMasterCsv(event, "store");
     $("baseMasterUpload").onchange = (event) => uploadMasterCsv(event, "base");
@@ -815,7 +846,8 @@
       $("auditForm").classList.remove("hidden");
       $("auditTitle").textContent = titleMap[type];
       renderRateCard();
-      renderStationery();
+      $("stationeryCard").classList.toggle("hidden", type === "managerVisit");
+      if (type !== "managerVisit") renderStationery(); else $("stationeryRows").innerHTML = "";
       renderAssetRowsForAudit();
       calculateScore();
     }
@@ -845,7 +877,9 @@
 
     function toggleTrainFields(showTrain) {
       ["genericLocationField","genericMasterField","genericMasterDetailField"].forEach(id => $(id).classList.toggle("hidden", showTrain));
-      ["trainNameField","trainSelectField","trainManualNameField","trainNoField","rackNoField","yardManagerField","yardManagerNoField","rackManagerField","rackManagerNoField"].forEach(id => $(id).classList.toggle("hidden", !showTrain));
+      ["trainNameField","trainManualNameField","trainNoField","rackNoField","yardManagerField","yardManagerNoField","rackManagerField","rackManagerNoField"].forEach(id => $(id).classList.toggle("hidden", !showTrain));
+      $("trainSelectField").classList.add("hidden");
+      $("managerNameField").classList.toggle("hidden", showTrain);
       if (!showTrain) {
         $("trainSearchInput").value = "";
         $("trainNameSelect").value = "";
@@ -869,6 +903,9 @@
       if (exact) {
         $("trainNameSelect").value = String(exact.i);
         applySelectedTrain();
+      } else if (matches.length === 1) {
+        $("trainNameSelect").value = String(matches[0].i);
+        applySelectedTrain();
       }
     }
 
@@ -885,6 +922,7 @@
       $("trainManualNameInput").value = row.trainName || "";
       $("trainNoInput").value = row.trainNo || "";
       $("rackNoInput").value = row.racks || row.rackNo || "";
+      populateRackList(row.trainName);
       $("yardManagerInput").value = row.trainManager || row.yardManager || "";
       $("yardManagerNoInput").value = row.trainManagerNumber || row.yardManagerNumber || "";
       $("rackManagerInput").value = row.rackManagerName || "";
@@ -894,6 +932,20 @@
       $("contactNumber").value = row.trainManagerNumber || row.yardManagerNumber || row.contactNo || "";
       $("masterDetail").value = `Train: ${row.trainName || ""}; Yard: ${row.yardName || ""}; Rack: ${row.racks || ""}; Rack Manager: ${row.rackManagerName || ""}`;
       renderAssetRowsForAudit();
+    }
+
+    function populateRackList(trainName) {
+      const racks = getMaster("train").filter(r => normalizeText(r.trainName) === normalizeText(trainName)).map(r => r.racks || r.rackNo).filter(Boolean);
+      $("rackMasterList").innerHTML = [...new Set(racks)].map(r => `<option value="${r}"></option>`).join("");
+    }
+
+    function applyRackDetail() {
+      const trainName = $("trainManualNameInput").value || $("trainNameSelect").selectedOptions[0]?.textContent?.replace(/\s+\(.+\)$/,"");
+      const rack = normalizeText($("rackNoInput").value);
+      const row = getMaster("train").find(r => normalizeText(r.trainName) === normalizeText(trainName) && normalizeText(r.racks || r.rackNo) === rack);
+      if (!row) return;
+      $("rackManagerInput").value = row.rackManagerName || "";
+      $("rackManagerNoInput").value = row.contactNo || row.rackManagerNumber || "";
     }
 
     function applySelectedMaster() {
@@ -1022,7 +1074,13 @@
         const selectedValue = $("trainNameSelect")?.value || "";
         const selected = selectedValue === "" ? {} : (getMaster("train")[Number(selectedValue)] || {});
         const trainName = normalizeText(selected.trainName || trainLabel);
-        const masterAssets = getMaster("asset").filter(a => normalizeText(a.trainName || "") === trainName);
+        const seenAssets = new Set();
+        const masterAssets = getMaster("asset").filter(a => normalizeText(a.trainName || "") === trainName).filter(a => {
+          const key = normalizeText(a.assetName);
+          if (seenAssets.has(key)) return false;
+          seenAssets.add(key);
+          return true;
+        });
         if (masterAssets.length) {
           renderAssetTable(masterAssets);
           return;
@@ -1611,11 +1669,19 @@
           const trainName = row[0] || row[1] || "";
           return headers.slice(1).map((h, i) => ({ trainName, assetName: h, qty: Number(row[i + 1] || 0) })).filter(x => x.assetName && x.qty);
         });
+        const seen = new Set();
+        data = data.filter(x => {
+          const key = normalizeText(x.trainName) + "|" + normalizeText(x.assetName);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       } else {
         data = rows.map(row => Object.fromEntries(headers.map((h,i)=>[normalizeHeader(h), row[i] || ""])));
       }
       setLocal("rkMaster_" + type, data);
       if (db && setDoc && doc) await setDoc(doc(db, "masters", type), { data, updatedAt: new Date().toISOString() });
+      addMasterLog(type, "Uploaded master CSV", data.length);
       renderMasterSummary();
       $("masterUploadStatus").textContent = `${type} master uploaded successfully with ${data.length} records.`;
       alert("Master uploaded: " + type);
@@ -1647,6 +1713,54 @@
 
     function renderMasterSummary() {
       $("masterSummaryTable").innerHTML = `<tr><th>Master</th><th>Records</th></tr>` + ["train","store","base","asset"].map(k => `<tr><td>${k}</td><td>${getMaster(k).length}</td></tr>`).join("");
+      const isSuper = current.user?.email === "sandipnandi2000@gmail.com";
+      $("masterLogBox").classList.toggle("hidden", !isSuper);
+      if (isSuper) renderMasterLog();
+    }
+
+    let activeMasterType = "";
+    function openMasterViewer(type) {
+      activeMasterType = type;
+      $("masterViewerTitle").textContent = `${type.toUpperCase()} Master`;
+      $("masterViewerSearch").value = "";
+      renderMasterViewerRows();
+      $("masterViewerPanel").classList.remove("hidden");
+    }
+
+    function closeMasterViewer() { $("masterViewerPanel").classList.add("hidden"); }
+
+    function renderMasterViewerRows() {
+      const data = getMaster(activeMasterType);
+      const query = normalizeText($("masterViewerSearch").value);
+      const rows = data.map((row, index) => ({ row, index })).filter(({ row }) => !query || normalizeText(Object.values(row).join(" ")).includes(query)).slice(0, 200);
+      const keys = activeMasterType === "asset" ? ["trainName","assetName","qty"] : [...new Set(data.flatMap(r => Object.keys(r)))].slice(0, 14);
+      $("masterViewerTable").innerHTML = `<tr><th>#</th>${keys.map(k => `<th>${k}</th>`).join("")}</tr>` + rows.map(({ row, index }) => `<tr><td>${index + 1}</td>${keys.map(k => `<td><input data-master-index="${index}" data-master-key="${k}" value="${String(row[k] ?? "").replaceAll('"',"&quot;")}"></td>`).join("")}</tr>`).join("");
+    }
+
+    async function saveMasterViewer() {
+      const data = getMaster(activeMasterType);
+      document.querySelectorAll("[data-master-index]").forEach(input => {
+        const idx = Number(input.dataset.masterIndex);
+        const key = input.dataset.masterKey;
+        data[idx] = data[idx] || {};
+        data[idx][key] = input.value;
+      });
+      setLocal("rkMaster_" + activeMasterType, data);
+      if (db && setDoc && doc) await setDoc(doc(db, "masters", activeMasterType), { data, updatedAt: new Date().toISOString() });
+      addMasterLog(activeMasterType, "Edited and saved master from viewer", data.length);
+      renderMasterSummary();
+      alert("Master updated. Completed audits are unchanged; changes apply to new audits only.");
+    }
+
+    function addMasterLog(type, action, count) {
+      const logs = getLocal("rkMasterLogs", []);
+      logs.unshift({ at: new Date().toISOString(), type, action, count, by: current.user?.email || "" });
+      setLocal("rkMasterLogs", logs.slice(0, 200));
+    }
+
+    function renderMasterLog() {
+      const logs = getLocal("rkMasterLogs", []);
+      $("masterLogTable").innerHTML = `<tr><th>Date</th><th>Master</th><th>Action</th><th>Records</th><th>By</th></tr>` + logs.map(l => `<tr><td>${l.at}</td><td>${l.type}</td><td>${l.action}</td><td>${l.count}</td><td>${l.by}</td></tr>`).join("");
     }
 
     function downloadMyExcel() {
@@ -1696,8 +1810,24 @@
       localStorage.removeItem("rkMaster_asset");
       setLocal("rkMaster_asset", []);
       if (db && deleteDoc && doc) await deleteDoc(doc(db, "masters", "asset")).catch(console.warn);
+      addMasterLog("asset", "Deleted asset master", 0);
       renderMasterSummary();
       alert("Asset Master deleted.");
+    }
+
+    async function deleteMasterPrompt(type) {
+      const label = `${type.toUpperCase()} Master`;
+      const email = prompt(`Big warning: this will delete ${label}. Enter Super Admin email to continue.`);
+      if (email !== "sandipnandi2000@gmail.com") return;
+      const pass = prompt("Enter Super Admin password again.");
+      if (pass !== "Sanju@1234") return;
+      if (!confirm(`Final confirmation: delete ${label}?`)) return;
+      localStorage.removeItem("rkMaster_" + type);
+      setLocal("rkMaster_" + type, []);
+      if (db && deleteDoc && doc) await deleteDoc(doc(db, "masters", type)).catch(console.warn);
+      addMasterLog(type, "Deleted master", 0);
+      renderMasterSummary();
+      alert(`${label} deleted.`);
     }
 
     function downloadBlob(name, content, type) {

@@ -23,7 +23,7 @@
     .hero:after{content:"";position:absolute;left:0;right:0;bottom:0;height:38px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.9) 0 26px,transparent 26px 50px);opacity:.24;animation:track 2.6s linear infinite}
     @keyframes track{to{transform:translateX(-50px)}}
     main{padding-bottom:80px}
-    .grid{display:grid;gap:14px}.two{grid-template-columns:2fr 1fr}.three{grid-template-columns:repeat(3,1fr)}.four{grid-template-columns:repeat(4,1fr)}
+    .grid{display:grid;gap:14px}.two{grid-template-columns:repeat(2,minmax(0,1fr))}.three{grid-template-columns:repeat(3,1fr)}.four{grid-template-columns:repeat(4,1fr)}
     .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;box-shadow:var(--shadow)}
     label{display:block;margin:8px 0 5px;font-size:12px;font-weight:800;color:var(--muted)}
     input,select,button{width:100%;border:1px solid #cfd6e2;border-radius:8px;padding:10px;font:inherit}
@@ -31,7 +31,7 @@
     .hidden{display:none!important}.kpi b{display:block;font-size:28px}.kpi{border-top:5px solid var(--rail-blue)}
     table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#eef5fb;color:var(--rail-blue)}
     .table-scroll{overflow:auto;border:1px solid var(--line);border-radius:8px;max-height:440px}
-    canvas{width:100%;height:320px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    canvas{width:100%;height:280px;border:1px solid var(--line);border-radius:8px;background:#fff}
     .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:10px}
     .photo-grid img{width:100%;height:110px;object-fit:cover;border:1px solid var(--line);border-radius:8px}
     .detail-panel{position:fixed;inset:0;background:rgba(17,24,39,.72);z-index:20;display:grid;place-items:center;padding:18px}
@@ -60,7 +60,7 @@
         <button data-tab="overview" class="active">Overview</button>
         <button data-tab="reports">Reports</button>
         <button data-tab="analytics">Analytics</button>
-        <button data-tab="data">Data</button>
+        <button data-tab="data" id="dataTabBtn">Data</button>
       </div>
       <section id="tab-overview">
         <div class="card" style="margin-bottom:14px">
@@ -89,6 +89,10 @@
           <div class="card"><h2>Day Wise Audit Volume</h2><canvas id="dayTypeChart"></canvas></div>
           <div class="card"><h2>Manager / Location Risk</h2><canvas id="locationRiskChart"></canvas></div>
         </div>
+        <div class="card" style="margin-top:14px">
+          <h2>Audit Detail Snapshot</h2>
+          <div class="table-scroll"><table id="overviewAuditTable"></table></div>
+        </div>
       </section>
 
       <section id="tab-reports" class="hidden card">
@@ -107,6 +111,14 @@
       </section>
 
       <section id="tab-analytics" class="hidden">
+        <div class="card" style="margin-bottom:14px">
+          <div class="grid four">
+            <div><label>From Date</label><input id="anFrom" type="date"></div>
+            <div><label>To Date</label><input id="anTo" type="date"></div>
+            <div><label>Audit Type</label><select id="anType"><option value="">All</option><option value="train">Train</option><option value="base">Base Kitchen</option><option value="store">Store</option><option value="managerVisit">Manager Train Visit</option></select></div>
+            <div><label>Search</label><input id="anSearch" placeholder="Train, store, base, manager, auditor"></div>
+          </div>
+        </div>
         <div class="grid two">
           <div class="card"><h2>Category Weakness Analysis</h2><canvas id="categoryChart"></canvas></div>
           <div class="card"><h2>Audit Trend</h2><canvas id="trendChart"></canvas></div>
@@ -191,13 +203,14 @@
     $("loginBtn").onclick = login;
     $("logoutBtn").onclick = async () => { if (auth && signOut) await signOut(auth).catch(console.warn); location.reload(); };
     document.querySelectorAll("[data-tab]").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
-    ["filterType","filterAuditor","filterFrom","filterTo","filterLocation","filterManager","globalFrom","globalTo","globalType","globalSearch"].forEach(id => $(id).oninput = renderAll);
+    ["filterType","filterAuditor","filterFrom","filterTo","filterLocation","filterManager","globalFrom","globalTo","globalType","globalSearch","anFrom","anTo","anType","anSearch"].forEach(id => $(id).oninput = renderAll);
 
     async function login() {
       const id = $("loginId").value.trim(), pass = $("loginPassword").value;
       $("loginMsg").textContent = "";
       if (id === "demo" && pass === "demo") {
         currentUser = { email: "demo", permissions: { dashboard: { read: true, write: false } } };
+        $("dataTabBtn").classList.add("hidden");
         $("loginScreen").classList.add("hidden"); $("dashScreen").classList.remove("hidden"); $("logoutBtn").classList.remove("hidden"); loadReports(); return;
       }
       if (auth && signInWithEmailAndPassword && id.includes("@")) {
@@ -213,6 +226,7 @@
             role: result.user.email === "sandipnandi2000@gmail.com" ? "super-admin" : (profile?.role || "auditor"),
             permissions: result.user.email === "sandipnandi2000@gmail.com" ? { dashboard: { read: true, write: true } } : (profile?.permissions || {})
           };
+          $("dataTabBtn").classList.toggle("hidden", currentUser.email !== "sandipnandi2000@gmail.com");
           if (!canReadDashboard()) {
             $("loginMsg").textContent = "Login successful, but this user does not have Central Dashboard read access.";
             return;
@@ -229,6 +243,7 @@
       return currentUser?.role === "super-admin" || !!currentUser?.permissions?.dashboard?.read;
     }
     function showTab(tab) {
+      if (tab === "data" && currentUser?.email !== "sandipnandi2000@gmail.com") tab = "overview";
       ["overview","reports","analytics","data"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== tab));
       document.querySelectorAll("[data-tab]").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
       renderAll();
@@ -258,13 +273,14 @@
     }
     function filtered() {
       const globalType = $("globalType").value || activeType;
-      const globalSearch = $("globalSearch").value.toLowerCase();
+      const globalSearch = ($("globalSearch").value || $("anSearch").value).toLowerCase();
       return reports.filter(r => {
-        const typeOk = !($("filterType").value || globalType) || r.type === ($("filterType").value || globalType);
+        const typeChoice = $("filterType").value || $("anType").value || globalType;
+        const typeOk = !typeChoice || r.type === typeChoice;
         const aud = $("filterAuditor").value.toLowerCase();
         const audOk = !aud || String(r.auditor || "").toLowerCase().includes(aud) || String(r.auditorId || "").toLowerCase().includes(aud);
-        const fromVal = $("filterFrom").value || $("globalFrom").value;
-        const toVal = $("filterTo").value || $("globalTo").value;
+        const fromVal = $("filterFrom").value || $("globalFrom").value || $("anFrom").value;
+        const toVal = $("filterTo").value || $("globalTo").value || $("anTo").value;
         const fromOk = !fromVal || String(r.date || "") >= fromVal;
         const toOk = !toVal || String(r.date || "") <= toVal;
         const loc = $("filterLocation").value.toLowerCase();
@@ -282,7 +298,7 @@
       const fail = data.length - pass;
       const avg = data.length ? Math.round(data.reduce((s,r)=>s+(r.totals?.pct||0),0)/data.length) : 0;
       $("kTotal").textContent = data.length; $("kAvg").textContent = avg + "%"; $("kPass").textContent = pass; $("kFail").textContent = fail;
-      renderTable(data); renderRisk(data); renderFindings(data);
+      renderTable(data); renderRisk(data); renderFindings(data); renderOverviewAuditTable(data);
       renderAssetVariance(data);
       barChart("typeChart", countBy(data, r => r.typeLabel || r.type), ["#123c69","#d8343a","#14804a","#b76e00"]);
       barChart("scoreChart", scoreBands(data), ["#d8343a","#b76e00","#14804a","#123c69"]);
@@ -297,6 +313,14 @@
     function renderTable(data) {
       $("reportTable").innerHTML = `<tr><th>View</th><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Auditor</th><th>Score</th><th>Status</th><th>Observation</th></tr>` +
         data.map(r => `<tr><td><button class="ghost" onclick="viewAuditDetail('${r.id||""}')" style="width:auto">View</button></td><td>${escapeHtml(r.id||"")}</td><td>${escapeHtml(r.date||"")}</td><td>${escapeHtml(r.typeLabel||r.type||"")}</td><td>${escapeHtml(r.location||"")}</td><td>${escapeHtml(r.auditor||"")}</td><td>${r.totals?.score||0}/${r.totals?.max||0} (${r.totals?.pct||0}%)</td><td class="${(r.totals?.pct||0)>=60?"status-pass":"status-fail"}">${(r.totals?.pct||0)>=60?"Pass":"Fail"}</td><td>${escapeHtml(r.observations?.major||"")}</td></tr>`).join("");
+    }
+    function renderOverviewAuditTable(data) {
+      const rows = [...data].sort((a,b) => String(b.date || "").localeCompare(String(a.date || ""))).slice(0, 20);
+      $("overviewAuditTable").innerHTML = `<tr><th>Date</th><th>Audit</th><th>Train/Location</th><th>Manager</th><th>Auditor</th><th>Score</th><th>Weak Points</th></tr>` +
+        rows.map(r => {
+          const weak = Object.values(r.responses || {}).filter(v => v === "no" || v === "partial").length;
+          return `<tr><td>${escapeHtml(r.date || "")}</td><td>${escapeHtml(r.typeLabel || r.type || "")}</td><td>${escapeHtml(r.location || "")}</td><td>${escapeHtml(r.manager || r.trainDetail?.yardManagerName || "")}</td><td>${escapeHtml(r.auditor || "")}</td><td>${r.totals?.pct || 0}%</td><td>${weak}</td></tr>`;
+        }).join("");
     }
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
@@ -349,14 +373,22 @@
     }
     function renderAssetVariance(data) {
       const rows = [];
+      const focus = {};
       data.forEach(r => (r.assets || []).forEach(a => {
         const planned = Number(a.systemQty || 0);
         const actual = Number(a.physicalQty || 0);
         const variance = a.variance ?? (actual - planned);
+        const assetName = a.name || a.assetName || "";
+        focus[assetName] = focus[assetName] || { cases: 0, shortageCases: 0, shortageQty: 0 };
+        focus[assetName].cases++;
+        if (Number(variance) < 0) { focus[assetName].shortageCases++; focus[assetName].shortageQty += Math.abs(Number(variance)); }
         if (planned || actual || variance) rows.push([r.date, r.typeLabel || r.type, r.location, r.manager || "", a.name || a.assetName || "", planned, actual, variance, a.score || ""]);
       }));
       rows.sort((a,b) => Math.abs(Number(b[7] || 0)) - Math.abs(Number(a[7] || 0)));
-      $("assetVarianceTable").innerHTML = `<tr><th>Date</th><th>Audit</th><th>Location</th><th>Manager</th><th>Asset</th><th>System Qty</th><th>Physical Qty</th><th>Variance</th><th>Score</th></tr>` +
+      const focusRows = Object.entries(focus).map(([asset, v]) => [asset, v.cases, v.shortageCases, v.shortageQty]).sort((a,b) => b[3] - a[3]);
+      $("assetVarianceTable").innerHTML = `<tr><th colspan="4">Asset Focus Summary</th></tr><tr><th>Asset</th><th>Checked Cases</th><th>Shortage Cases</th><th>Total Short Qty</th></tr>` +
+        focusRows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("") +
+        `<tr><th colspan="9">Detailed Variance</th></tr><tr><th>Date</th><th>Audit</th><th>Location</th><th>Manager</th><th>Asset</th><th>System Qty</th><th>Physical Qty</th><th>Variance</th><th>Score</th></tr>` +
         rows.slice(0,100).map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("");
     }
     function countBy(data, fn) { const o={}; data.forEach(r => { const k=fn(r)||"Unknown"; o[k]=(o[k]||0)+1; }); return o; }
@@ -379,15 +411,16 @@
       const rows = [];
       const grouped = {};
       data.forEach(r => {
-        const key = `${r.typeLabel || r.type} | ${r.location || "Unknown"}`;
-        grouped[key] = grouped[key] || { total: 0, low: 0, avg: [] };
+        const trainName = r.trainDetail?.trainName || r.location || "Unknown";
+        const key = `${trainName} | ${r.typeLabel || r.type}`;
+        grouped[key] = grouped[key] || { total: 0, low: 0, avg: [], no: 0, partial: 0 };
         grouped[key].total++;
         grouped[key].avg.push(r.totals?.pct || 0);
-        Object.values(r.responses || {}).forEach(v => { if (v === "no" || v === "partial") grouped[key].low++; });
+        Object.values(r.responses || {}).forEach(v => { if (v === "no" || v === "partial") grouped[key].low++; if (v === "no") grouped[key].no++; if (v === "partial") grouped[key].partial++; });
       });
-      Object.entries(grouped).forEach(([k,v]) => rows.push([k, v.total, v.low, Math.round(v.avg.reduce((a,b)=>a+b,0)/v.avg.length)]));
+      Object.entries(grouped).forEach(([k,v]) => rows.push([k, v.total, v.low, v.no, v.partial, Math.round(v.avg.reduce((a,b)=>a+b,0)/v.avg.length)]));
       rows.sort((a,b) => b[2] - a[2]);
-      $("heatTable").innerHTML = `<tr><th>Audit / Location</th><th>Audits</th><th>Weak Points</th><th>Avg Score</th></tr>` + rows.slice(0,20).map(r => `<tr><td>${escapeHtml(r[0])}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}%</td></tr>`).join("");
+      $("heatTable").innerHTML = `<tr><th>Train/Location | Audit</th><th>Audits</th><th>Total Weak</th><th>Failed</th><th>Needs Improvement</th><th>Avg Score</th></tr>` + rows.slice(0,20).map(r => `<tr><td>${escapeHtml(r[0])}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td><td>${r[5]}%</td></tr>`).join("");
     }
     function trend(data) {
       const o={}; data.forEach(r => { const d=r.date || String(r.createdAt || "").slice(0,10) || "No date"; if(!o[d])o[d]=[]; o[d].push(r.totals?.pct||0); });
