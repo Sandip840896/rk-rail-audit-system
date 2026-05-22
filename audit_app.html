@@ -671,6 +671,7 @@
     window.startAudit = startAudit;
     window.addAssetRow = addAssetRow;
     window.submitAudit = submitAudit;
+    window.calculateScore = calculateScore;
     window.saveUserAccount = saveUserAccount;
     window.editUserAccount = editUserAccount;
     window.resetUserForm = resetUserForm;
@@ -1045,7 +1046,7 @@
             <tr>
               <td><input data-asset="${index}" data-field="name" value="${a.assetName || ""}" readonly></td>
               <td><input type="number" data-asset="${index}" data-field="systemQty" value="${a.qty || 0}" readonly></td>
-              <td><input type="number" data-asset="${index}" data-field="physicalQty" oninput="calculateScore()" placeholder="Enter count"></td>
+              <td><input type="number" data-asset="${index}" data-field="physicalQty" placeholder="Enter count"></td>
               <td><input data-asset-variance="${index}" readonly></td>
               <td><input data-asset-score="${index}" readonly></td>
               <td><input data-asset="${index}" data-field="remarks" placeholder="Remarks"></td>
@@ -1057,6 +1058,10 @@
       title.textContent = `Asset master loaded: ${masterAssets.length} items`;
       $("assetRows").appendChild(title);
       $("assetRows").appendChild(wrap);
+      wrap.querySelectorAll('[data-field="physicalQty"]').forEach(input => {
+        input.addEventListener("input", calculateScore);
+        input.addEventListener("change", calculateScore);
+      });
       calculateScore();
     }
 
@@ -1068,11 +1073,13 @@
       row.innerHTML = `
         <div><label>Asset Name</label><input data-asset="${index}" data-field="name" value="${asset.assetName || ""}" readonly></div>
         <div><label>System Qty</label><input type="number" data-asset="${index}" data-field="systemQty" value="${asset.qty || 0}" readonly></div>
-        <div><label>Physical Qty</label><input type="number" data-asset="${index}" data-field="physicalQty" oninput="calculateScore()"></div>
+        <div><label>Physical Qty</label><input type="number" data-asset="${index}" data-field="physicalQty"></div>
         <div><label>Variance</label><input data-asset-variance="${index}" readonly></div>
         <div><label>Score</label><input data-asset-score="${index}" readonly></div>
         <div><label>Remarks</label><input data-asset="${index}" data-field="remarks"></div>`;
       $("assetRows").appendChild(row);
+      row.querySelector('[data-field="physicalQty"]').addEventListener("input", calculateScore);
+      row.querySelector('[data-field="physicalQty"]').addEventListener("change", calculateScore);
     }
 
     function getSelectedTrainName() {
