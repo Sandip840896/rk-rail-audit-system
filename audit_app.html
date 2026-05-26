@@ -131,6 +131,10 @@
     .photo-thumb button { border-radius: 0; padding: 7px; font-size: 12px; }
     .point-score { min-width: 78px; text-align: center; background: #f4f7fb; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-weight: 900; color: var(--rail-blue); }
     .evidence-box { margin-top: 10px; padding: 10px; border: 1px dashed #b8c2d4; border-radius: 8px; background: #f8fafc; }
+    .search-results { margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 10px 28px rgba(18,60,105,.12); }
+    .search-result { width: 100%; border-radius: 0; background: #fff; color: var(--ink); border-bottom: 1px solid var(--line); text-align: left; padding: 10px 12px; font-weight: 700; }
+    .search-result:last-child { border-bottom: 0; }
+    .search-result span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 700; }
     .success-modal { position: fixed; inset: 0; z-index: 30; background: rgba(17,24,39,.66); display: grid; place-items: center; padding: 18px; }
     .success-card { background: white; color: var(--ink); border-radius: 8px; max-width: 360px; width: 100%; text-align: center; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
     .train-thumbs { font-size: 44px; margin: 6px 0 10px; }
@@ -237,6 +241,7 @@
               <label>Train Name Search</label>
               <input id="trainSearchInput" list="trainMasterList" placeholder="Type train name or number">
               <datalist id="trainMasterList"></datalist>
+              <div id="trainSearchResults" class="search-results hidden"></div>
             </div>
             <div id="trainSelectField" class="hidden">
               <label>Matched Train From Master</label>
@@ -720,6 +725,7 @@
     window.downloadCurrentHtml = downloadCurrentHtml;
     window.saveFirebaseConfig = saveFirebaseConfig;
     window.testFirebase = testFirebase;
+    window.selectTrainFromSearch = selectTrainFromSearch;
 
     $("loginBtn").onclick = login;
     $("logoutBtn").onclick = async () => { if (auth && signOut) await signOut(auth).catch(console.warn); location.reload(); };
@@ -798,6 +804,9 @@
       });
       renderReports();
       renderUsers();
+      loadMastersFromFirebase().then(() => {
+        if (!$("tab-masters").classList.contains("hidden")) renderMasterSummary();
+      });
     }
 
     function canRead(page) {
@@ -824,11 +833,12 @@
       if (tab === "masters") renderMasterSummary();
     }
 
-    function startAudit(type) {
+    async function startAudit(type) {
       if (!canWrite(type)) {
         alert("You do not have write access for " + titleMap[type] + ".");
         return;
       }
+      if (type === "train" || type === "managerVisit") await loadMastersFromFirebase();
       current.auditType = type;
       current.responses = {};
       current.assets = [];
@@ -862,6 +872,15 @@
       return getLocal("rkMaster_" + type, seededMasters[type] || []);
     }
 
+    async function loadMastersFromFirebase() {
+      if (!db || !getDoc || !doc || current.user?.email === "demo") return;
+      await Promise.all(["train", "store", "base", "asset"].map(async key => {
+        const snap = await getDoc(doc(db, "masters", key)).catch(() => null);
+        const rows = snap && snap.exists() ? snap.data()?.data : null;
+        if (Array.isArray(rows)) setLocal("rkMaster_" + key, rows);
+      }));
+    }
+
     function populateMasterSelect(type) {
       if (type === "train" || type === "managerVisit") {
         populateTrainSelect();
@@ -891,14 +910,24 @@
       const rows = getMaster("train");
       $("trainMasterList").innerHTML = rows.map((r) => `<option value="${r.trainName || ""}">${r.trainNo || ""} ${r.yardName || ""}</option>`).join("");
       $("trainNameSelect").innerHTML = `<option value="">Manual entry / Train not listed</option>` + rows.slice(0, 30).map((r, i) => `<option value="${i}">${r.trainName || ""} (${r.trainNo || ""})</option>`).join("");
+      $("trainSearchResults").classList.add("hidden");
+      $("trainSearchResults").innerHTML = "";
       applySelectedTrain();
     }
 
     function filterTrainOptions() {
       const query = normalizeText($("trainSearchInput").value);
       const rows = getMaster("train");
-      const matches = rows.map((r, i) => ({ r, i })).filter(({ r }) => !query || normalizeText(`${r.trainName} ${r.trainNo} ${r.yardName}`).includes(query)).slice(0, 50);
+      const matches = rows.map((r, i) => ({ r, i })).filter(({ r }) => !query || normalizeText(`${r.trainName} ${r.trainNo} ${r.yardName} ${r.racks} ${r.rackManagerName}`).includes(query)).slice(0, 50);
       $("trainNameSelect").innerHTML = `<option value="">Manual entry / Train not listed</option>` + matches.map(({ r, i }) => `<option value="${i}">${r.trainName || ""} (${r.trainNo || ""})</option>`).join("");
+      const visibleMatches = query ? matches.slice(0, 10) : [];
+      $("trainSearchResults").classList.toggle("hidden", visibleMatches.length === 0);
+      $("trainSearchResults").innerHTML = visibleMatches.map(({ r, i }) => `
+        <button type="button" class="search-result" onclick="selectTrainFromSearch('${i}')">
+          ${escapeHtml(r.trainName || "Unnamed train")}
+          <span>${escapeHtml([r.trainNo, r.racks ? "Rack " + r.racks : "", r.yardName, r.rackManagerName].filter(Boolean).join(" | "))}</span>
+        </button>
+      `).join("");
       const exact = matches.find(({ r }) => normalizeText(r.trainName) === query || normalizeText(r.trainNo) === query);
       if (exact) {
         $("trainNameSelect").value = String(exact.i);
@@ -907,6 +936,17 @@
         $("trainNameSelect").value = String(matches[0].i);
         applySelectedTrain();
       }
+    }
+
+    function selectTrainFromSearch(index) {
+      const rows = getMaster("train");
+      const row = rows[Number(index)];
+      if (!row) return;
+      $("trainNameSelect").value = String(index);
+      $("trainSearchInput").value = `${row.trainName || ""}${row.trainNo ? " (" + row.trainNo + ")" : ""}`;
+      $("trainSearchResults").classList.add("hidden");
+      $("trainSearchResults").innerHTML = "";
+      applySelectedTrain();
     }
 
     function applySelectedTrain() {
