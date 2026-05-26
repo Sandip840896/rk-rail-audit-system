@@ -32,6 +32,8 @@
     table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#eef5fb;color:var(--rail-blue)}
     .table-scroll{overflow:auto;border:1px solid var(--line);border-radius:8px;max-height:440px}
     canvas{width:100%;height:280px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    .selection-strip{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#eef5fb;border-color:#b8c7db}
+    .selection-strip button{width:auto;padding:8px 12px}
     .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:10px}
     .photo-grid img{width:100%;height:110px;object-fit:cover;border:1px solid var(--line);border-radius:8px}
     .detail-panel{position:fixed;inset:0;background:rgba(17,24,39,.72);z-index:20;display:grid;place-items:center;padding:18px}
@@ -71,6 +73,10 @@
             <div><label>Location / Manager</label><input id="globalSearch" placeholder="Train, store, base, manager"></div>
           </div>
         </div>
+        <div id="chartSelectionBox" class="card selection-strip hidden" style="margin-bottom:14px">
+          <div><b>Chart selection active:</b> <span id="chartSelectionText"></span></div>
+          <button class="ghost" onclick="clearChartSelection()">Clear Selection</button>
+        </div>
         <div class="grid four">
           <div class="card kpi"><span class="small">Total Audits</span><b id="kTotal">0</b></div>
           <div class="card kpi"><span class="small">Average Score</span><b id="kAvg">0%</b></div>
@@ -88,6 +94,10 @@
         <div class="grid two" style="margin-top:14px">
           <div class="card"><h2>Day Wise Audit Volume</h2><canvas id="dayTypeChart"></canvas></div>
           <div class="card"><h2>Manager / Location Risk</h2><canvas id="locationRiskChart"></canvas></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h2>Day Wise Auditor Productivity</h2>
+          <canvas id="auditorDayChart"></canvas>
         </div>
         <div class="card" style="margin-top:14px">
           <h2>Audit Detail Snapshot</h2>
@@ -121,7 +131,7 @@
         </div>
         <div class="grid two">
           <div class="card"><h2>Category Weakness Analysis</h2><canvas id="categoryChart"></canvas></div>
-          <div class="card"><h2>Audit Trend</h2><canvas id="trendChart"></canvas></div>
+          <div class="card"><h2>Date Wise Average Score Trend</h2><canvas id="trendChart"></canvas></div>
         </div>
         <div class="grid two" style="margin-top:14px">
           <div class="card"><h2>Auditor Score Quality</h2><canvas id="auditorScoreChart"></canvas></div>
@@ -197,8 +207,9 @@
     const setLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
     let reports = [];
     let activeType = "";
+    let chartSelection = null;
     let currentUser = null;
-    window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig; window.viewAuditDetail = viewAuditDetail; window.closeAuditDetail = closeAuditDetail;
+    window.renderAll = renderAll; window.exportCsv = exportCsv; window.loadReports = loadReports; window.downloadJson = downloadJson; window.clearLocalData = clearLocalData; window.saveFirebaseConfig = saveFirebaseConfig; window.viewAuditDetail = viewAuditDetail; window.closeAuditDetail = closeAuditDetail; window.clearChartSelection = clearChartSelection;
     $("firebaseConfigText").value = JSON.stringify(activeConfig, null, 2);
     $("loginBtn").onclick = login;
     $("logoutBtn").onclick = async () => { if (auth && signOut) await signOut(auth).catch(console.warn); location.reload(); };
@@ -288,12 +299,13 @@
         const locOk = !loc || String(r.location || "").toLowerCase().includes(loc);
         const mgrOk = !mgr || String(r.manager || "").toLowerCase().includes(mgr);
         const globalOk = !globalSearch || [r.location, r.manager, r.auditor, r.typeLabel].some(v => String(v || "").toLowerCase().includes(globalSearch));
-        return typeOk && audOk && fromOk && toOk && locOk && mgrOk && globalOk;
+        return typeOk && audOk && fromOk && toOk && locOk && mgrOk && globalOk && chartSelectionMatches(r);
       });
     }
     function renderAll() {
       populateAuditorDropdown(reports.filter(r => !$("filterType").value || r.type === $("filterType").value));
       const data = filtered();
+      renderChartSelection();
       const pass = data.filter(r => (r.totals?.pct || 0) >= 60).length;
       const fail = data.length - pass;
       const avg = data.length ? Math.round(data.reduce((s,r)=>s+(r.totals?.pct||0),0)/data.length) : 0;
@@ -308,7 +320,47 @@
       barChart("locationRiskChart", avgBy(data, r => r.location || "Unknown", r => 100 - (r.totals?.pct || 0)), ["#d8343a"]);
       barChart("auditorScoreChart", avgBy(data, r => r.auditor || "Unknown", r => r.totals?.pct || 0), ["#14804a"]);
       renderHeatTable(data);
-      lineChart("trendChart", trend(data));
+      lineChart("auditorDayChart", dayAuditCounts(data), "Audits");
+      lineChart("trendChart", trend(data), "Avg Score %");
+    }
+    function renderChartSelection() {
+      $("chartSelectionBox").classList.toggle("hidden", !chartSelection);
+      $("chartSelectionText").textContent = chartSelection ? `${chartSelection.title}: ${chartSelection.value}` : "";
+    }
+    function clearChartSelection() {
+      chartSelection = null;
+      activeType = "";
+      renderAll();
+    }
+    function setChartSelection(id, label) {
+      const typeMap = { "Train Audit": "train", "Base Kitchen Audit": "base", "Store Audit": "store", "Manager Train Visit": "managerVisit", Train: "train", "Base Kitchen": "base", Store: "store" };
+      const config = {
+        typeChart: { title: "Audit Type", kind: "type", value: typeMap[label] || label },
+        scoreChart: { title: "Score Band", kind: "scoreBand", value: label },
+        auditorChart: { title: "Auditor", kind: "auditor", value: label },
+        dayTypeChart: { title: "Audit Day/Type", kind: "dayType", value: label },
+        locationRiskChart: { title: "Location", kind: "location", value: label },
+        categoryChart: { title: "Weak Point", kind: "weakPoint", value: label },
+        auditorScoreChart: { title: "Auditor", kind: "auditor", value: label },
+        auditorDayChart: { title: "Date", kind: "date", value: label },
+        trendChart: { title: "Date", kind: "date", value: label }
+      }[id];
+      if (!config) return;
+      chartSelection = config;
+      activeType = config.kind === "type" ? config.value : "";
+      renderAll();
+    }
+    function chartSelectionMatches(r) {
+      if (!chartSelection) return true;
+      const value = chartSelection.value;
+      if (chartSelection.kind === "type") return r.type === value || r.typeLabel === value;
+      if (chartSelection.kind === "scoreBand") return scoreBandFor(r.totals?.pct || 0) === value;
+      if (chartSelection.kind === "auditor") return (r.auditor || "Unknown") === value;
+      if (chartSelection.kind === "dayType") return `${r.date || "No date"} ${r.typeLabel || r.type}` === value;
+      if (chartSelection.kind === "date") return (r.date || String(r.createdAt || "").slice(0,10) || "No date") === value;
+      if (chartSelection.kind === "location") return (r.location || "Unknown") === value;
+      if (chartSelection.kind === "weakPoint") return hasWeakPoint(r, value);
+      return true;
     }
     function renderTable(data) {
       $("reportTable").innerHTML = `<tr><th>View</th><th>ID</th><th>Date</th><th>Type</th><th>Location</th><th>Auditor</th><th>Score</th><th>Status</th><th>Observation</th></tr>` +
@@ -399,13 +451,27 @@
     }
     function scoreBands(data) {
       const o={"0-49":0,"50-59":0,"60-79":0,"80-100":0};
-      data.forEach(r => { const p=r.totals?.pct||0; if(p<50)o["0-49"]++; else if(p<60)o["50-59"]++; else if(p<80)o["60-79"]++; else o["80-100"]++; });
+      data.forEach(r => { o[scoreBandFor(r.totals?.pct || 0)]++; });
       return o;
+    }
+    function scoreBandFor(p) {
+      if (p < 50) return "0-49";
+      if (p < 60) return "50-59";
+      if (p < 80) return "60-79";
+      return "80-100";
     }
     function weakCategories(data) {
       const o={};
-      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => { if (val === "no" || val === "partial") { const k=(r.typeLabel || r.type) + " point " + (Number(idx)+1); o[k]=(o[k]||0)+1; }}));
+      data.forEach(r => Object.entries(r.responses || {}).forEach(([idx,val]) => { if (val === "no" || val === "partial") { const k=weakPointLabel(r, idx); o[k]=(o[k]||0)+1; }}));
       return Object.fromEntries(Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,12));
+    }
+    function weakPointLabel(r, idx) {
+      const item = r.rateCard?.[idx] || r.points?.[idx] || r.items?.[idx];
+      const label = Array.isArray(item) ? (item[1] || item[0]) : (item?.parameter || item?.title || item?.name);
+      return `${r.typeLabel || r.type} - ${label || "Point " + (Number(idx) + 1)}`;
+    }
+    function hasWeakPoint(r, label) {
+      return Object.entries(r.responses || {}).some(([idx, val]) => (val === "no" || val === "partial") && weakPointLabel(r, idx) === label);
     }
     function renderHeatTable(data) {
       const rows = [];
@@ -426,32 +492,65 @@
       const o={}; data.forEach(r => { const d=r.date || String(r.createdAt || "").slice(0,10) || "No date"; if(!o[d])o[d]=[]; o[d].push(r.totals?.pct||0); });
       return Object.fromEntries(Object.entries(o).sort().map(([k,v])=>[k, Math.round(v.reduce((a,b)=>a+b,0)/v.length)]));
     }
-    function barChart(id, obj, colors) {
-      const c=$(id), ctx=c.getContext("2d"), W=c.width=c.clientWidth*2, H=c.height=260*2; ctx.clearRect(0,0,W,H);
-      const entries=Object.entries(obj).slice(0,14); const max=Math.max(1,...entries.map(e=>e[1])); const pad=90, gap=18, bw=Math.max(30,(W-pad*2)/Math.max(1,entries.length)-gap);
-      ctx.font="24px Arial"; ctx.fillStyle="#17202a";
-      entries.forEach(([label,val],i)=>{ const x=pad+i*(bw+gap), h=(H-150)*(val/max), y=H-95-h; ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(x,y,bw,h); ctx.fillStyle="#17202a"; ctx.fillText(String(val),x,y-10); ctx.save(); ctx.translate(x,H-58); ctx.rotate(-0.35); ctx.font="22px Arial"; ctx.fillText(label.slice(0,24),0,0); ctx.restore(); });
-      if (id === "typeChart") {
-        c.onclick = (event) => {
-          const rect = c.getBoundingClientRect();
-          const clickX = (event.clientX - rect.left) * 2;
-          entries.forEach(([label], i) => {
-            const x=pad+i*(bw+gap);
-            if (clickX >= x && clickX <= x + bw) {
-              const map = {"Train Audit":"train","Base Kitchen Audit":"base","Store Audit":"store","Manager Train Visit":"managerVisit"};
-              activeType = map[label] || "";
-              $("globalType").value = activeType;
-              renderAll();
-            }
-          });
-        };
-      }
+    function dayAuditCounts(data) {
+      const o={};
+      data.forEach(r => { const d = r.date || String(r.createdAt || "").slice(0,10) || "No date"; o[d] = (o[d] || 0) + 1; });
+      return Object.fromEntries(Object.entries(o).sort());
     }
-    function lineChart(id, obj) {
-      const c=$(id), ctx=c.getContext("2d"), W=c.width=c.clientWidth*2, H=c.height=260*2; ctx.clearRect(0,0,W,H);
-      const entries=Object.entries(obj); if(!entries.length)return; const pad=60; ctx.strokeStyle="#123c69"; ctx.lineWidth=5; ctx.beginPath();
-      entries.forEach(([label,val],i)=>{ const x=pad+i*((W-pad*2)/Math.max(1,entries.length-1)); const y=H-pad-(val/100)*(H-pad*2); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); ctx.fillStyle="#d8343a"; ctx.fillRect(x-5,y-5,10,10); ctx.fillStyle="#17202a"; ctx.font="22px Arial"; ctx.fillText(val+"%",x-18,y-14); });
+    function barChart(id, obj, colors) {
+      const c=$(id), ctx=c.getContext("2d"), scale=2, W=c.width=c.clientWidth*scale, H=c.height=c.clientHeight*scale;
+      ctx.clearRect(0,0,W,H);
+      const entries=Object.entries(obj).slice(0,12);
+      c._chartRows = [];
+      if(!entries.length){ ctx.fillStyle="#667085"; ctx.font="24px Arial"; ctx.fillText("No data for selected filter", 26, 52); c.onclick=null; return; }
+      const max=Math.max(1,...entries.map(e=>Number(e[1]) || 0));
+      const labelW=Math.min(300, Math.max(170, W*.34));
+      const top=28, rowH=Math.max(34, Math.min(58, (H-52)/entries.length)), barMax=W-labelW-92;
+      ctx.font="22px Arial"; ctx.textBaseline="middle";
+      entries.forEach(([label,val],i)=>{
+        const y=top+i*rowH, barW=Math.max(4, (Number(val)||0)/max*barMax);
+        const text=String(label);
+        ctx.fillStyle="#17202a"; ctx.fillText(text.length>34?text.slice(0,31)+"...":text, 22, y+rowH/2);
+        ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(labelW, y+8, barW, rowH-16);
+        ctx.fillStyle="#17202a"; ctx.font="bold 22px Arial"; ctx.fillText(String(val), labelW+barW+12, y+rowH/2); ctx.font="22px Arial";
+        c._chartRows.push({ label, y1:y/scale, y2:(y+rowH)/scale });
+      });
+      c.onclick = (event) => {
+        const y = event.clientY - c.getBoundingClientRect().top;
+        const row = (c._chartRows || []).find(r => y >= r.y1 && y <= r.y2);
+        if (row) setChartSelection(id, row.label);
+      };
+    }
+    function lineChart(id, obj, suffix) {
+      const c=$(id), ctx=c.getContext("2d"), scale=2, W=c.width=c.clientWidth*scale, H=c.height=c.clientHeight*scale;
+      ctx.clearRect(0,0,W,H);
+      const entries=Object.entries(obj).slice(-18); if(!entries.length){ ctx.fillStyle="#667085"; ctx.font="24px Arial"; ctx.fillText("No data for selected filter", 26, 52); return; }
+      const values = entries.map(e => Number(e[1]) || 0);
+      const max = Math.max(1, ...values);
+      const padL=70, padR=34, padT=30, padB=70;
+      ctx.strokeStyle="#d9dee7"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(padL,H-padB); ctx.lineTo(W-padR,H-padB); ctx.stroke();
+      ctx.strokeStyle="#123c69"; ctx.lineWidth=5; ctx.beginPath();
+      c._chartRows = [];
+      entries.forEach(([label,val],i)=>{
+        const x=padL+i*((W-padL-padR)/Math.max(1,entries.length-1));
+        const y=H-padB-(Number(val)||0)/max*(H-padT-padB);
+        if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        c._chartRows.push({ label, x:x/scale, y:y/scale });
+      });
       ctx.stroke();
+      entries.forEach(([label,val],i)=>{
+        const x=padL+i*((W-padL-padR)/Math.max(1,entries.length-1));
+        const y=H-padB-(Number(val)||0)/max*(H-padT-padB);
+        ctx.fillStyle="#d8343a"; ctx.beginPath(); ctx.arc(x,y,7,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle="#17202a"; ctx.font="20px Arial"; ctx.fillText(`${val}${suffix && suffix.includes("%") ? "%" : ""}`, x-16, Math.max(18,y-16));
+        ctx.save(); ctx.translate(x-34,H-26); ctx.rotate(-0.25); ctx.fillText(String(label).slice(5),0,0); ctx.restore();
+      });
+      c.onclick = (event) => {
+        const rect = c.getBoundingClientRect();
+        const x = event.clientX - rect.left, y = event.clientY - rect.top;
+        const row = (c._chartRows || []).find(p => Math.abs(x - p.x) < 22 && Math.abs(y - p.y) < 28);
+        if (row) setChartSelection(id, row.label);
+      };
     }
     function exportCsv() {
       const data = filtered();
