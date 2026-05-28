@@ -239,7 +239,7 @@
             </div>
             <div id="trainNameField" class="hidden">
               <label>Train Name Search</label>
-              <input id="trainSearchInput" list="trainMasterList" placeholder="Type train name or number">
+              <input id="trainSearchInput" placeholder="Type train name or number">
               <datalist id="trainMasterList"></datalist>
               <div id="trainSearchResults" class="search-results hidden"></div>
             </div>
@@ -416,6 +416,11 @@
           <button onclick="downloadMasterSample('train')">Train Sample</button>
           <button onclick="downloadMasterSample('site')">Store/Base Sample</button>
           <button onclick="downloadMasterSample('asset')">Asset Sample</button>
+        </div>
+        <div class="grid three" style="margin-top:12px">
+          <button class="good" onclick="syncLocalMastersToFirebase()">Sync Local Masters to Firebase</button>
+          <button class="secondary" onclick="refreshMastersFromFirebase()">Refresh Masters From Firebase</button>
+          <input id="firebaseMasterStatus" readonly placeholder="Firebase master status">
         </div>
         <div class="grid four" style="margin-top:12px">
           <button class="ghost" onclick="openMasterViewer('train')">View/Edit Train Master</button>
@@ -720,6 +725,8 @@
     window.openMasterViewer = openMasterViewer;
     window.closeMasterViewer = closeMasterViewer;
     window.saveMasterViewer = saveMasterViewer;
+    window.syncLocalMastersToFirebase = syncLocalMastersToFirebase;
+    window.refreshMastersFromFirebase = refreshMastersFromFirebase;
     window.downloadData = downloadData;
     window.uploadData = uploadData;
     window.downloadCurrentHtml = downloadCurrentHtml;
@@ -736,6 +743,7 @@
     $("masterSelect").onchange = applySelectedMaster;
     $("trainNameSelect").onchange = applySelectedTrain;
     $("trainSearchInput").oninput = filterTrainOptions;
+    $("trainSearchInput").onchange = applyTrainSearchInput;
     $("rackNoInput").oninput = applyRackDetail;
     $("masterViewerSearch").oninput = renderMasterViewerRows;
     $("trainMasterUpload").onchange = (event) => uploadMasterCsv(event, "train");
@@ -830,7 +838,7 @@
       document.querySelectorAll("[data-tab]").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
       if (tab === "reports") renderReports();
       if (tab === "admin") renderUsers();
-      if (tab === "masters") renderMasterSummary();
+      if (tab === "masters") refreshMastersFromFirebase();
     }
 
     async function startAudit(type) {
@@ -848,6 +856,7 @@
       current.managerDocs = {};
       current.managerAssets = [];
       current.staffListPhoto = null;
+      current.selectedTrainIndex = "";
       $("photoInput").value = "";
       renderPhotoPreview();
       toggleTrainFields(type === "train" || type === "managerVisit");
@@ -881,6 +890,56 @@
       }));
     }
 
+    async function saveMasterToFirebase(type, data, action) {
+      if (!db || !setDoc || !getDoc || !doc) throw new Error("Firebase is not connected.");
+      await setDoc(doc(db, "masters", type), {
+        data,
+        count: data.length,
+        updatedAt: new Date().toISOString(),
+        updatedBy: current.user?.email || current.user?.id || "",
+        action
+      }, { merge: true });
+      const snap = await getDoc(doc(db, "masters", type));
+      const savedRows = snap.exists() ? snap.data()?.data : null;
+      if (!Array.isArray(savedRows) || savedRows.length !== data.length) {
+        throw new Error(`Firebase verification failed. Local ${data.length}, Firebase ${Array.isArray(savedRows) ? savedRows.length : 0}.`);
+      }
+      return savedRows.length;
+    }
+
+    async function refreshMastersFromFirebase() {
+      $("firebaseMasterStatus").value = "Refreshing...";
+      try {
+        await loadMastersFromFirebase();
+        renderMasterSummary();
+        $("firebaseMasterStatus").value = "Firebase refresh complete";
+      } catch (err) {
+        renderMasterSummary();
+        $("firebaseMasterStatus").value = "Firebase refresh failed";
+        $("masterUploadStatus").textContent = "Firebase refresh failed: " + err.message;
+      }
+    }
+
+    async function syncLocalMastersToFirebase() {
+      if (current.user?.email === "demo") return alert("Demo login cannot sync master data.");
+      if (!confirm("This will upload the master data currently visible on this device to Firebase. Continue?")) return;
+      $("firebaseMasterStatus").value = "Syncing...";
+      try {
+        const result = {};
+        for (const type of ["train", "store", "base", "asset"]) {
+          const data = getMaster(type);
+          result[type] = await saveMasterToFirebase(type, data, "Manual sync local master to Firebase");
+          addMasterLog(type, "Synced local master to Firebase", data.length);
+        }
+        renderMasterSummary();
+        $("firebaseMasterStatus").value = `Synced: train ${result.train}, store ${result.store}, base ${result.base}, asset ${result.asset}`;
+        alert("Local masters synced to Firebase successfully. Please refresh on mobile and check the master count.");
+      } catch (err) {
+        $("firebaseMasterStatus").value = "Sync failed";
+        alert("Firebase master sync failed: " + err.message);
+      }
+    }
+
     function populateMasterSelect(type) {
       if (type === "train" || type === "managerVisit") {
         populateTrainSelect();
@@ -902,6 +961,7 @@
       if (!showTrain) {
         $("trainSearchInput").value = "";
         $("trainNameSelect").value = "";
+        current.selectedTrainIndex = "";
         ["trainManualNameInput","trainNoInput","rackNoInput","yardManagerInput","yardManagerNoInput","rackManagerInput","rackManagerNoInput"].forEach(id => $(id).value = "");
       }
     }
@@ -930,18 +990,29 @@
       `).join("");
       const exact = matches.find(({ r }) => normalizeText(r.trainName) === query || normalizeText(r.trainNo) === query);
       if (exact) {
+        current.selectedTrainIndex = String(exact.i);
         $("trainNameSelect").value = String(exact.i);
         applySelectedTrain();
       } else if (matches.length === 1) {
+        current.selectedTrainIndex = String(matches[0].i);
         $("trainNameSelect").value = String(matches[0].i);
         applySelectedTrain();
       }
+    }
+
+    function applyTrainSearchInput() {
+      const query = normalizeText($("trainSearchInput").value).replace(/\(.+\)$/,"").trim();
+      if (!query) return;
+      const rows = getMaster("train");
+      const match = rows.map((r, i) => ({ r, i })).find(({ r }) => normalizeText(r.trainName) === query || normalizeText(r.trainNo) === query || normalizeText(`${r.trainName} ${r.trainNo}`).includes(query));
+      if (match) selectTrainFromSearch(match.i);
     }
 
     function selectTrainFromSearch(index) {
       const rows = getMaster("train");
       const row = rows[Number(index)];
       if (!row) return;
+      current.selectedTrainIndex = String(index);
       $("trainNameSelect").value = String(index);
       $("trainSearchInput").value = `${row.trainName || ""}${row.trainNo ? " (" + row.trainNo + ")" : ""}`;
       $("trainSearchResults").classList.add("hidden");
@@ -951,7 +1022,7 @@
 
     function applySelectedTrain() {
       const rows = getMaster("train");
-      const selectedValue = $("trainNameSelect").value;
+      const selectedValue = $("trainNameSelect").value || current.selectedTrainIndex || "";
       const row = selectedValue === "" ? null : rows[Number(selectedValue)];
       if (!row) {
         $("trainManualNameInput").value = "";
@@ -1720,10 +1791,19 @@
         data = rows.map(row => Object.fromEntries(headers.map((h,i)=>[normalizeHeader(h), row[i] || ""])));
       }
       setLocal("rkMaster_" + type, data);
-      if (db && setDoc && doc) await setDoc(doc(db, "masters", type), { data, updatedAt: new Date().toISOString() });
+      try {
+        const savedCount = db ? await saveMasterToFirebase(type, data, "Uploaded master CSV") : 0;
+        $("firebaseMasterStatus").value = db ? `Firebase saved ${savedCount} ${type} records` : "Firebase not connected";
+      } catch (err) {
+        $("firebaseMasterStatus").value = "Firebase save failed";
+        $("masterUploadStatus").textContent = `${type} master loaded on this device only. Firebase save failed: ${err.message}`;
+        alert(`${type} master loaded on this device only. Firebase save failed: ${err.message}`);
+        renderMasterSummary();
+        return;
+      }
       addMasterLog(type, "Uploaded master CSV", data.length);
       renderMasterSummary();
-      $("masterUploadStatus").textContent = `${type} master uploaded successfully with ${data.length} records.`;
+      $("masterUploadStatus").textContent = `${type} master uploaded and verified in Firebase with ${data.length} records.`;
       alert("Master uploaded: " + type);
     }
 
@@ -1786,7 +1866,15 @@
         data[idx][key] = input.value;
       });
       setLocal("rkMaster_" + activeMasterType, data);
-      if (db && setDoc && doc) await setDoc(doc(db, "masters", activeMasterType), { data, updatedAt: new Date().toISOString() });
+      try {
+        const savedCount = db ? await saveMasterToFirebase(activeMasterType, data, "Edited and saved master from viewer") : 0;
+        $("firebaseMasterStatus").value = db ? `Firebase saved ${savedCount} ${activeMasterType} records` : "Firebase not connected";
+      } catch (err) {
+        $("firebaseMasterStatus").value = "Firebase save failed";
+        alert("Master was updated on this device only. Firebase save failed: " + err.message);
+        renderMasterSummary();
+        return;
+      }
       addMasterLog(activeMasterType, "Edited and saved master from viewer", data.length);
       renderMasterSummary();
       alert("Master updated. Completed audits are unchanged; changes apply to new audits only.");
