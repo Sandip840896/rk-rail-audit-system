@@ -892,6 +892,7 @@
 
     async function saveMasterToFirebase(type, data, action) {
       if (!db || !setDoc || !getDoc || !doc) throw new Error("Firebase is not connected.");
+      data = sanitizeForFirestore(data);
       await setDoc(doc(db, "masters", type), {
         data,
         count: data.length,
@@ -927,7 +928,8 @@
       try {
         const result = {};
         for (const type of ["train", "store", "base", "asset"]) {
-          const data = getMaster(type);
+          const data = sanitizeForFirestore(getMaster(type));
+          setLocal("rkMaster_" + type, data);
           result[type] = await saveMasterToFirebase(type, data, "Manual sync local master to Firebase");
           addMasterLog(type, "Synced local master to Firebase", data.length);
         }
@@ -1790,6 +1792,7 @@
       } else {
         data = rows.map(row => Object.fromEntries(headers.map((h,i)=>[normalizeHeader(h), row[i] || ""])));
       }
+      data = sanitizeForFirestore(data);
       setLocal("rkMaster_" + type, data);
       try {
         const savedCount = db ? await saveMasterToFirebase(type, data, "Uploaded master CSV") : 0;
@@ -1819,7 +1822,25 @@
 
     function normalizeHeader(h) {
       const map = { "TRAIN NO":"trainNo", "TRAIN NAME":"trainName", "TRAIN TYPE":"trainType", "YARD NAME":"yardName", "Yard Manager ( Train Manager )":"trainManager", "TRAIN MANAGER NUMBER":"trainManagerNumber", "RACKS":"racks", "RACK MANAGER NAME":"rackManagerName", "CONTACT NO":"contactNo", "NAME":"name", "MANAGER NAME":"managerName", "CONTACT NUMBER":"contactNo" };
-      return map[h] || h.toLowerCase().replace(/[^a-z0-9]+(.)/g, (_,c)=>c.toUpperCase());
+      const clean = String(h || "").trim();
+      if (!clean) return "";
+      return map[clean] || clean.toLowerCase().replace(/[^a-z0-9]+(.)/g, (_,c)=>c.toUpperCase()).replace(/[^a-zA-Z0-9_]/g, "");
+    }
+
+    function sanitizeForFirestore(value) {
+      if (Array.isArray(value)) return value.map(sanitizeForFirestore).filter(v => v !== undefined);
+      if (value && typeof value === "object") {
+        const out = {};
+        Object.entries(value).forEach(([key, val]) => {
+          const cleanKey = String(key || "").trim();
+          if (!cleanKey) return;
+          const cleanVal = sanitizeForFirestore(val);
+          if (cleanVal !== undefined) out[cleanKey] = cleanVal;
+        });
+        return out;
+      }
+      if (value === undefined) return "";
+      return value;
     }
 
     function downloadMasterSample(type) {
